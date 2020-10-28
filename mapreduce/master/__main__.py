@@ -8,6 +8,7 @@ import pathlib
 import glob
 import threading
 import socket
+from mapreduce.utils import listen, create_socket
 
 
 # Configure logging
@@ -32,63 +33,15 @@ class Master:
                 os.rmdir(jobPaths)
 
         # create a new thread which will listen for udp heartbeats from workers (port - 1)
-        heartbeat_thread = threading.Thread(target=listen, args=(signals,))
+        signals = {"shutdown": False}
+        sock = create_socket(port)
+        heartbeat_thread = threading.Thread(target=listen, args=(signals, sock,))
         heartbeat_thread.start()
 
         # TODO: create additional threads or setup you may need. (ex: fault tolerance)
+
+        # TODO: shutdown
         
-
-        # TODO: you should remove this. This is just so the program doesn't
-        # exit immediately!
-        logging.debug("IMPLEMENT ME!")
-        time.sleep(120)
-
-
-    def listen(signals):
-        """Wait on a message from a socket or a shutdown signal."""
-        # create a new tcp socket on given port and call listen() function. only one listen() thread.
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # bind socket to server
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(port)
-        sock.listen()
-
-        # in example...
-        sock.settimeout(1)
-
-        while not signals["shutdown"]:
-            # listen for a connection
-            try:
-                clientsocket, address = sock.accept()
-            except socket.timeout:
-                continue
-
-        message_chunks = []
-        while True:
-            try:
-                data = clientsocket.recv(4096) # idK??
-            except socket.timeout:
-                continue
-            if not data:
-                break
-            message_chunks.append(data)
-        clientsocket.close()
-
-        message_bytes = b''.join(message_chunks)
-        message_str = message_bytes.decode('utf-8')
-
-        try:
-            message_dict = json.loads(message_str)
-        except JSONDecodeError:
-            continue
-
-        logging.debug("Master:%s received\n%s",
-            port,
-            json.dumps(message_dict, indent=2),
-        )
-
-
-
 
 
 @click.command()
