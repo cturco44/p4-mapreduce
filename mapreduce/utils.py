@@ -1,4 +1,5 @@
 import socket
+import json
 
 
 """Utils file.
@@ -19,36 +20,28 @@ def tcp_socket(port):
   return sock
 
 
-def listen(signals, sock):
-    """Wait on a message from a socket or a shutdown signal."""
-    # as shown in example...
-    sock.settimeout(1)
-    while not signals["shutdown"]:
-        # listen for a connection
+def listen_setup(sock):
+    """Set up listening on a sock. Returns message as a string."""
+    # listen for a connection
+    try:
+        clientsocket, address = sock.accept()
+    except socket.timeout:
+        continue
+
+    message_chunks = []
+    while True:
         try:
-            clientsocket, address = sock.accept()
+            data = clientsocket.recv(4096) # TODO: maximum size??
         except socket.timeout:
             continue
+        if not data:
+            break
+        message_chunks.append(data)
 
-        message_chunks = []
-        while True:
-            try:
-                data = clientsocket.recv(4096) # TODO: maximum size??
-            except socket.timeout:
-                continue
-            if not data:
-                break
-            message_chunks.append(data)
+    clientsocket.close()
 
-        clientsocket.close()
+    message_bytes = b''.join(message_chunks)
+    message_str = message_bytes.decode('utf-8')
 
-        message_bytes = b''.join(message_chunks)
-        message_str = message_bytes.decode('utf-8')
+    return message_str
 
-        try:
-            message_dict = json.loads(message_str)
-            if message_dict["message_type"] == "shutdown":
-                signals["shutdown"] = True
-
-        except JSONDecodeError:
-            continue

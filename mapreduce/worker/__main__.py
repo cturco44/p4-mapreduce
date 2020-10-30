@@ -6,7 +6,7 @@ import click
 import mapreduce.utils
 import threading
 import socket
-from mapreduce.utils import listen, tcp_socket
+from mapreduce.utils import listen_setup, tcp_socket
 
 
 # Configure logging
@@ -28,7 +28,7 @@ class Worker:
         signals = {"shutdown": False}
         self.sock = tcp_socket(self.worker_port)
 
-        thread = threading.Thread(target=listen, args=(signals, self.sock,))
+        thread = threading.Thread(target=self.listen, args=(signals, self.sock,))
         thread.start()
 
         # send the register message to Master
@@ -43,6 +43,25 @@ class Worker:
         # NOTE: the Master should ignore heartbeat messages from a worker
         # before that worker has successfully registered
 
+
+    def listen(signals, sock, worker_dict):
+        """Wait on a message from a socket or a shutdown signal."""
+        sock.settimeout(1)
+        while not signals["shutdown"]:
+            message_str = listen_setup(sock)
+
+            try:
+                message_dict = json.loads(message_str)
+                message_type = message_dict["message_type"]
+
+                if message_type == "shutdown":
+                    signals["shutdown"] = True
+
+                #elif message_type == "register_ack":
+                    # TODO: start sending heartbeats
+                    #self.send_heartbeats()
+            except json.JSONDecodeError:
+                continue
 
 
     def send_tcp_message(self, message_json): 
@@ -59,6 +78,10 @@ class Worker:
         except socket.error as err:
             print("Failed to send message to Master.")
             print(err)
+
+
+    #def send_heartbeats(self):
+        # TODO: send heartbeats
 
 
     def register(self):
