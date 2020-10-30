@@ -6,8 +6,8 @@ import socket
 This file is to house code common between the Master and the Worker
 
 """
-def create_socket(port):
-  """Initialize and bind a socket."""
+def tcp_socket(port):
+  """Initialize and bind a TCP socket for LISTENING."""
   # create a new tcp socket
   sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -30,22 +30,25 @@ def listen(signals, sock):
         except socket.timeout:
             continue
 
-    message_chunks = []
-    while True:
+        message_chunks = []
+        while True:
+            try:
+                data = clientsocket.recv(4096) # TODO: maximum size??
+            except socket.timeout:
+                continue
+            if not data:
+                break
+            message_chunks.append(data)
+
+        clientsocket.close()
+
+        message_bytes = b''.join(message_chunks)
+        message_str = message_bytes.decode('utf-8')
+
         try:
-            data = clientsocket.recv(4096) # TODO: maximum size??
-        except socket.timeout:
+            message_dict = json.loads(message_str)
+            if message_dict["message_type"] == "shutdown":
+                signals["shutdown"] = True
+
+        except JSONDecodeError:
             continue
-        if not data:
-            break
-        message_chunks.append(data)
-
-    clientsocket.close()
-
-    message_bytes = b''.join(message_chunks)
-    message_str = message_bytes.decode('utf-8')
-
-    try:
-        message_dict = json.loads(message_str)
-    except JSONDecodeError:
-        continue

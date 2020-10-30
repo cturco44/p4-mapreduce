@@ -6,7 +6,7 @@ import click
 import mapreduce.utils
 import threading
 import socket
-from mapreduce.utils import listen, create_socket
+from mapreduce.utils import listen, tcp_socket
 
 
 # Configure logging
@@ -26,7 +26,7 @@ class Worker:
         # Create new tcp socket on the worker_port and call listen(). only one listen().
         # ignore invalid messages including those that fail at json decoding
         signals = {"shutdown": False}
-        self.sock = create_socket(self.worker_port)
+        self.sock = tcp_socket(self.worker_port)
 
         thread = threading.Thread(target=listen, args=(signals, self.sock,))
         thread.start()
@@ -37,16 +37,16 @@ class Worker:
         # TODO: upon receiving the register_ack message, create a new thread which will be
         # responsible for sending heartbeat messages to the Master
 
-        # TODO: shutdown
+        if signals["shutdown"]:
+            thread.join()
         
         # NOTE: the Master should ignore heartbeat messages from a worker
         # before that worker has successfully registered
 
 
 
-    def send_message(message_json): 
-        """Send a message from the Worker to the Master."""
-        # TODO: supposed to open an additional socket for sending messages to master socket?
+    def send_tcp_message(self, message_json): 
+        """Send a TCP message from the Worker to the Master."""
         try:
             # create an INET, STREAMing socket, this is TCP
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -61,7 +61,7 @@ class Worker:
             print(err)
 
 
-    def register():
+    def register(self):
         """Send 'register' message from Worker to the Master."""
         register_dict = {
             "message_type": "register",
@@ -71,7 +71,7 @@ class Worker:
         }
 
         message_json = json.dumps(register_dict)
-        self.send_message(message_json)
+        self.send_tcp_message(message_json)
 
         logging.debug(
             "Worker:%s received\n%s",
