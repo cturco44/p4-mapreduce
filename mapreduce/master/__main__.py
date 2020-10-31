@@ -58,20 +58,35 @@ class Master:
 
         #if signals["first_worker"]:
             # TODO: check job queue to see if there is any work to assign to the Worker
+            # PUT THIS IN listen function ?
             # if the master is already executing a map/group/reduce, it should assign the Worker the next available task immediately
 
+        # FOR TESTING
+        count = 0
+        while not signals["shutdown"]:
+            time.sleep(1)
+            count += 1
+            if count > 15:
+                break
+    
         if signals["shutdown"]:
             self.send_shutdown()
 
-        master_thread.join()
-        self.heartbeat_thread.join() # should all threads join?
+            master_thread.join()
+            self.heartbeat_thread.join()
+            master_sock.close()
+
+        
 
 
     def listen(self, signals, sock):
         """Wait on a message from a socket or a shutdown signal."""
         sock.settimeout(1)
         while not signals["shutdown"]:
-            message_str = listen_setup(sock))
+            message_str = listen_setup(sock)
+
+            if message_str == "":
+                continue
 
             try:
                 message_dict = json.loads(message_str)
@@ -79,8 +94,9 @@ class Master:
 
                 if message_type == "shutdown":
                     signals["shutdown"] = True
+
                 elif message_type == "register":
-                    self.register_workers(message_dict)
+                    self.register_worker(message_dict)
                     self.send_register_ack(message_dict)
 
                     if not signals["first_worker"]:
@@ -94,7 +110,7 @@ class Master:
         """Add new worker to self.worker_threads dict."""
         self.worker_threads[worker_message['worker_pid']] = {
             "worker_host": worker_message['worker_host'],
-            "worker_post": worker_message['worker_port'],
+            "worker_port": worker_message['worker_port'],
             "state": "ready",
         }
 
@@ -104,7 +120,7 @@ class Master:
         reg_response_dict = {
             "message_type": "register_ack",
             "worker_host": worker_message["worker_host"],
-            "worker_post": worker_message["worker_port"],
+            "worker_port": worker_message["worker_port"],
             "worker_pid": worker_message["worker_pid"]
         }
 
@@ -120,8 +136,8 @@ class Master:
         }
         shutdown_json = json.dumps(shutdown_dict)
         
-        for worker in self.worker_threads:
-            self.send_tcp_message(shutdown_json, worker.worker_port)
+        for worker in self.worker_threads.values():
+            self.send_tcp_message(shutdown_json, worker['worker_port'])
 
 
     def send_tcp_message(self, message_json, worker_port):
@@ -131,7 +147,7 @@ class Master:
 
             sock.connect(("localhost", worker_port))
 
-            sock.sendall(str.encode(message_json))
+            sock.sendall(message_json.encode('utf-8'))
             sock.close()
         except socket.error as err:
             print("Failed to send a message to a worker at port " + str(worker_port))

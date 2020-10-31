@@ -22,13 +22,14 @@ class Worker:
         self.worker_pid = os.getpid()
         self.worker_port = worker_port
         self.master_port = master_port
+        self.state = "not_ready"
 
         # Create new tcp socket on the worker_port and call listen(). only one listen().
         # ignore invalid messages including those that fail at json decoding
         signals = {"shutdown": False}
         self.sock = tcp_socket(self.worker_port)
 
-        thread = threading.Thread(target=self.listen, args=(signals, self.sock,))
+        thread = threading.Thread(target=self.listen, args=(signals,))
         thread.start()
 
         # send the register message to Master
@@ -37,18 +38,30 @@ class Worker:
         # TODO: upon receiving the register_ack message, create a new thread which will be
         # responsible for sending heartbeat messages to the Master
 
+        # FOR TESTING
+        count = 0
+        while not signals["shutdown"]:
+            time.sleep(1)
+            count += 1
+            if count > 15:
+                break
+
         if signals["shutdown"]:
             thread.join()
+            self.sock.close()
         
         # NOTE: the Master should ignore heartbeat messages from a worker
         # before that worker has successfully registered
 
 
-    def listen(signals, sock, worker_dict):
+    def listen(self, signals):
         """Wait on a message from a socket or a shutdown signal."""
-        sock.settimeout(1)
+        self.sock.settimeout(1)
         while not signals["shutdown"]:
-            message_str = listen_setup(sock)
+            message_str = listen_setup(self.sock)
+
+            if message_str == "":
+                continue
 
             try:
                 message_dict = json.loads(message_str)
@@ -56,9 +69,12 @@ class Worker:
 
                 if message_type == "shutdown":
                     signals["shutdown"] = True
+                    #thread.join()
+                    #self.sock.close()
 
-                #elif message_type == "register_ack":
+                elif message_type == "register_ack":
                     # TODO: start sending heartbeats
+                    self.state = "ready"
                     #self.send_heartbeats()
             except json.JSONDecodeError:
                 continue
@@ -73,7 +89,7 @@ class Worker:
             # connect to the server
             sock.connect(("localhost", self.master_port))
 
-            sock.sendall(str.encode(message_json))
+            sock.sendall(message_json.encode('utf-8'))
             sock.close()
         except socket.error as err:
             print("Failed to send message to Master.")

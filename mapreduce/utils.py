@@ -25,8 +25,11 @@ def listen_setup(sock):
     # listen for a connection
     try:
         clientsocket, address = sock.accept()
+        print("Connection from", address[0])
     except socket.timeout:
-        continue
+        # print("Socket timeout")
+        return ""
+    
 
     message_chunks = []
     while True:
