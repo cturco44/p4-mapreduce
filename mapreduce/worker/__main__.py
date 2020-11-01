@@ -43,7 +43,7 @@ class Worker:
         while not signals["shutdown"]:
             time.sleep(1)
             count += 1
-            if count > 15:
+            if count > 10:
                 break
 
         if signals["shutdown"]:

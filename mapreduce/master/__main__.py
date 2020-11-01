@@ -8,6 +8,7 @@ import pathlib
 import glob
 import threading
 import socket
+from queue import Queue
 from mapreduce.utils import listen_setup, tcp_socket
 
 
@@ -46,27 +47,24 @@ class Master:
         self.heartbeat_thread.start()
 
         self.worker_threads = {}
+        self.job_counter = 0
+        self.job_queue = Queue()
 
         # TODO: create additional threads or setup you may need. (ex: fault tolerance)
 
-        # Create a new TCP socket on the given port_number and call the listen() function. 
-        # Note: only one listen() thread should remain open for the whole lifetime of the master
+        # Create a new TCP socket on the given port_number
         signals = {"shutdown": False, "first_worker": False}
         master_sock = tcp_socket(self.port)
         master_thread = threading.Thread(target=self.listen, args=(signals, master_sock,))
         master_thread.start()
-
-        #if signals["first_worker"]:
-            # TODO: check job queue to see if there is any work to assign to the Worker
-            # PUT THIS IN listen function ?
-            # if the master is already executing a map/group/reduce, it should assign the Worker the next available task immediately
 
         # FOR TESTING
         count = 0
         while not signals["shutdown"]:
             time.sleep(1)
             count += 1
-            if count > 15:
+            # TODO: as soon as a job finishes, start processing the next pending job
+            if count > 10:
                 break
     
         if signals["shutdown"]:
@@ -75,8 +73,6 @@ class Master:
             master_thread.join()
             self.heartbeat_thread.join()
             master_sock.close()
-
-        
 
 
     def listen(self, signals, sock):
@@ -101,9 +97,47 @@ class Master:
 
                     if not signals["first_worker"]:
                         signals["first_worker"] = True
+                        # TODO: check job queue for any jobs
+                        # if the master is already executing a map/group/reduce, it should assign the Worker the next available task immediately
+
+                elif message_type == "new_master_job":
+                    self.new_master_job(message_dict)
 
             except json.JSONDecodeError:
                 continue
+
+
+    def new_master_job(self, message_dict):
+        """Handle new_master_job message."""
+        # create directories tmp/job-{id}. id is self.job_counter
+        job_path = pathlib.Path("tmp/job-" + str(self.job_counter))
+        job_path.mkdir()
+        self.job_counter += 1
+
+        mapper_path = pathlib.Path(job_path/"mapper-output")
+        grouper_path = pathlib.Path(job_path/"grouper-output")
+        reducer_path = pathlib.Path(job_path/"reducer-output")
+        mapper_path.mkdir()
+        grouper_path.mkdir()
+        reducer_path.mkdir()
+
+        # if MapReduce server is busy or no available workers, add job to queue
+        if self.find_ready_worker() == -1:
+            # TODO: how to know if MapReduce server is busy?
+            self.job_queue.put(message_dict)
+        #else:
+            # TODO: begin job execution
+
+    def find_ready_worker(self):
+        """Return worker_pid of first available worker. If none available, return -1."""
+        # keys (worker_pid) in registration order
+        ordered_pids = list(self.worker_threads)
+
+        for pid in ordered_pids:
+            if self.worker_threads[pid]['state'] == 'ready':
+                return pid
+
+        return -1
 
 
     def register_worker(self, worker_message):
@@ -157,8 +191,6 @@ class Master:
     def heartbeat_listen(self, sock):
         """Listens for UDP heartbeat messages from workers."""
         # TODO: heartbeat
-
-        
 
 
 @click.command()
