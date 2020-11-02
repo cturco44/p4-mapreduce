@@ -31,7 +31,7 @@ class Master:
         # delete any old job folders in tmp
         path_string = str(p/'job-*')
         jobPaths = glob.glob(path_string)
-        # TODO: after actual tests start working, check the directories
+        # after actual tests start working, check the directories
         for path in jobPaths:
             try:
                 os.rmdir(jobPaths)
@@ -49,6 +49,8 @@ class Master:
         self.worker_threads = {}
         self.job_counter = 0
         self.job_queue = Queue()
+        self.server_running = False
+        #self.new_message = ""
 
         # TODO: create additional threads or setup you may need. (ex: fault tolerance)
 
@@ -58,12 +60,15 @@ class Master:
         master_thread = threading.Thread(target=self.listen, args=(signals, master_sock,))
         master_thread.start()
 
+        #run_thread = threading.Thread(target=self.run_jobs, args=(self.new_message))
+
         # FOR TESTING
         count = 0
         while not signals["shutdown"]:
             time.sleep(1)
             count += 1
             # TODO: as soon as a job finishes, start processing the next pending job
+            # if not self.server_running: start next job
             if count > 10:
                 break
     
@@ -97,8 +102,8 @@ class Master:
 
                     if not signals["first_worker"]:
                         signals["first_worker"] = True
-                        # TODO: check job queue for any jobs
-                        # if the master is already executing a map/group/reduce, it should assign the Worker the next available task immediately
+                        # TODO: if the master is already executing a map/group/reduce, it should assign the Worker the next available task immediately
+                        # if self.server_running: assign this worker the next task
 
                 elif message_type == "new_master_job":
                     self.new_master_job(message_dict) # this modifies message_dict. adds job_id key.
@@ -123,14 +128,15 @@ class Master:
         reducer_path.mkdir()
 
         # if MapReduce server is busy or no available workers, add job to queue
-        if self.find_ready_worker() == -1:
-            # TODO: how to know if MapReduce server is busy?
+        if self.find_ready_worker() == -1 || self.server_running:
             self.job_queue.put(message_dict)
         else:
             # TODO: begin job execution
+            self.server_running = True # TODO: when finished with job, set to False
+            self.input_partitioning(message_dict)
 
 
-    def input_partioning(self, message_dict):
+    def input_partitioning(self, message_dict):
         """Parition the input files and distribute files to workers to start mapping."""
         # initialize list of num_mappers lists
         num_mappers = message_dicts['num_mappers']
@@ -164,6 +170,9 @@ class Master:
 
             if curr_map_idx == num_mappers:
                 break
+
+        # TODO: will have to handle getting worker status messages for mapping/grouping/reducing
+        # maybe some signals like shutdown?
             
         # if more num_mappers than workers
         if num_mappers > len(ordered_pids):

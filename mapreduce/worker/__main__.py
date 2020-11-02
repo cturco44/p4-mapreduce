@@ -76,6 +76,10 @@ class Worker:
                     # TODO: start sending heartbeats
                     self.state = "ready"
                     #self.send_heartbeats()
+
+                # TODO: elif message_type == "new_worker_job":
+
+
             except json.JSONDecodeError:
                 continue
 
