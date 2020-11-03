@@ -6,6 +6,8 @@ import click
 import mapreduce.utils
 import threading
 import socket
+import pathlib
+import subprocess
 from mapreduce.utils import listen_setup, tcp_socket
 
 
@@ -23,6 +25,7 @@ class Worker:
         self.worker_port = worker_port
         self.master_port = master_port
         self.state = "not_ready"
+        self.job_counter = 0 # TODO: increment when done with current job
 
         # Create new tcp socket on the worker_port and call listen(). only one listen().
         # ignore invalid messages including those that fail at json decoding
@@ -43,7 +46,7 @@ class Worker:
         while not signals["shutdown"]:
             time.sleep(1)
             count += 1
-            if count > 10:
+            if count > 15:
                 break
 
         if signals["shutdown"]:
@@ -77,11 +80,47 @@ class Worker:
                     self.state = "ready"
                     #self.send_heartbeats()
 
-                # TODO: elif message_type == "new_worker_job":
+                elif message_type == "new_worker_job":
+                    self.state = "busy"
+                    self.new_worker_job(message_dict)
+                    self.state = "ready"
 
 
             except json.JSONDecodeError:
                 continue
+
+
+    def new_worker_job(self, message_dict):
+        """Handles mapping stage."""
+        executable = message_dict["executable"]
+        mapper_output_dir = pathlib.Path("tmp/job-" + self.job_counter + "/mapper-output")
+        output_files = []
+
+        for file in message_dict["input_files"]:
+            input_file = open(file)
+            output_dir = str(mapper_output_dir/self.input_file_name(file))
+
+            output_files.append(output_dir)
+            output_file = open(output_dir)
+
+            subprocess.run(args=[executable], stdin=input_file, stdout=output_file) # shell?
+
+        job_dict = {
+            "message_type": "status",
+            "output_files": output_files,
+            "status": "finished",
+            "worker_pid": self.worker_pid
+        }
+
+        job_json = json.dumps(job_dict)
+
+        self.send_tcp_message(job_json)
+
+
+    def input_file_name(self, file_path):
+        """Return only name of input file, given entire input path."""
+        dirs = file_path.split("/")
+        return dirs[-1]
 
 
     def send_tcp_message(self, message_json): 

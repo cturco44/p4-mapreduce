@@ -69,7 +69,7 @@ class Master:
             count += 1
             # TODO: as soon as a job finishes, start processing the next pending job
             # if not self.server_running: start next job
-            if count > 10:
+            if count > 15:
                 break
     
         if signals["shutdown"]:
@@ -108,8 +108,19 @@ class Master:
                 elif message_type == "new_master_job":
                     self.new_master_job(message_dict) # this modifies message_dict. adds job_id key.
 
+                elif message_type == "status":
+                    self.worker_status(message_dict)
+
             except json.JSONDecodeError:
                 continue
+
+
+    def worker_status(self, message_dict):
+        """Update state of worker."""
+        pid = message_dict["worker_pid"]
+
+        if message_dict['status'] == "finished":
+            self.worker_threads[pid]['state'] = "ready"
 
 
     def new_master_job(self, message_dict):
@@ -143,18 +154,19 @@ class Master:
         file_partitions = [[] for i in range(num_mappers)]
 
         job_id = message_dict['job_id']
-        sorted_files = sorted(os.listdir("tmp/job-" + str(job_id)))
+        sorted_files = sorted(os.listdir(message_dict['input_directory']))
 
         # partition the files into num_mappers groups
         for index, file in enumerate(sorted_files):
             partition_idx = index % num_mappers
-            file_partitions[partition_idx].append(file)
+            file_partitions[partition_idx].append(message_dict['input_directory'] + "/" + file)
 
         # initial groups. workers in registration order
         ordered_pids = list(self.worker_threads)
         curr_map_idx = 0
 
         for pid in ordered_pids:
+            self.worker_threads[pid]['state'] = "busy"
             job_dict = {
                 "message_type": "new_worker_job",
                 "input_files": file_partitions[curr_map_idx],
