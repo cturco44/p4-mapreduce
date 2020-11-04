@@ -92,9 +92,12 @@ class Master:
             try:
                 message_dict = json.loads(message_str)
                 message_type = message_dict["message_type"]
+                # TODO: for testing
+                print(message_dict)
 
                 if message_type == "shutdown":
                     signals["shutdown"] = True
+                    break
 
                 elif message_type == "register":
                     self.register_worker(message_dict)
@@ -127,19 +130,19 @@ class Master:
         """Handle new_master_job message."""
         # create directories tmp/job-{id}. id is self.job_counter
         job_path = pathlib.Path("tmp/job-" + str(self.job_counter))
-        job_path.mkdir()
+        job_path.mkdir(parents=True)
         message_dict['job_id'] = self.job_counter # not sure if i'll regret this
         self.job_counter += 1
 
         mapper_path = pathlib.Path(job_path/"mapper-output")
         grouper_path = pathlib.Path(job_path/"grouper-output")
         reducer_path = pathlib.Path(job_path/"reducer-output")
-        mapper_path.mkdir()
-        grouper_path.mkdir()
-        reducer_path.mkdir()
+        mapper_path.mkdir(parents=True)
+        grouper_path.mkdir(parents=True)
+        reducer_path.mkdir(parents=True)
 
         # if MapReduce server is busy or no available workers, add job to queue
-        if self.find_ready_worker() == -1 || self.server_running:
+        if self.find_ready_worker() == -1 or self.server_running:
             self.job_queue.put(message_dict)
         else:
             # TODO: begin job execution
@@ -150,7 +153,7 @@ class Master:
     def input_partitioning(self, message_dict):
         """Parition the input files and distribute files to workers to start mapping."""
         # initialize list of num_mappers lists
-        num_mappers = message_dicts['num_mappers']
+        num_mappers = message_dict['num_mappers']
         file_partitions = [[] for i in range(num_mappers)]
 
         job_id = message_dict['job_id']
@@ -189,10 +192,11 @@ class Master:
         # if more num_mappers than workers
         if num_mappers > len(ordered_pids):
             while curr_map_idx < num_mappers:
-                ready_pid = self.find_ready_workers()
+                ready_pid = self.find_ready_worker()
+                # look for ready workers
                 while ready_pid == -1:
                     time.sleep(1)
-                    ready_pid = self.find_ready_workers()
+                    ready_pid = self.find_ready_worker()
 
                 job_dict = {
                     "message_type": "new_worker_job",

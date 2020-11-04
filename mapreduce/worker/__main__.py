@@ -31,7 +31,6 @@ class Worker:
         # ignore invalid messages including those that fail at json decoding
         signals = {"shutdown": False}
         self.sock = tcp_socket(self.worker_port)
-
         thread = threading.Thread(target=self.listen, args=(signals,))
         thread.start()
 
@@ -49,10 +48,11 @@ class Worker:
             if count > 15:
                 break
 
-        if signals["shutdown"]:
-            thread.join()
-            self.sock.close()
-        
+        #if signals["shutdown"]:
+        thread.join()
+        self.sock.close()
+        print(threading.enumerate())
+
         # NOTE: the Master should ignore heartbeat messages from a worker
         # before that worker has successfully registered
 
@@ -69,9 +69,12 @@ class Worker:
             try:
                 message_dict = json.loads(message_str)
                 message_type = message_dict["message_type"]
+                # TODO: for testing
+                print(message_dict)
 
                 if message_type == "shutdown":
                     signals["shutdown"] = True
+                    break
                     #thread.join()
                     #self.sock.close()
 
@@ -93,7 +96,7 @@ class Worker:
     def new_worker_job(self, message_dict):
         """Handles mapping stage."""
         executable = message_dict["executable"]
-        mapper_output_dir = pathlib.Path("tmp/job-" + self.job_counter + "/mapper-output")
+        mapper_output_dir = pathlib.Path("tmp/job-" + str(self.job_counter) + "/mapper-output")
         output_files = []
 
         for file in message_dict["input_files"]:
@@ -101,7 +104,7 @@ class Worker:
             output_dir = str(mapper_output_dir/self.input_file_name(file))
 
             output_files.append(output_dir)
-            output_file = open(output_dir)
+            output_file = open(output_dir, "w")
 
             subprocess.run(args=[executable], stdin=input_file, stdout=output_file) # shell?
 
