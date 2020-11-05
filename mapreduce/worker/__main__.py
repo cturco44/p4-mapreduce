@@ -8,6 +8,7 @@ import threading
 import socket
 import pathlib
 import subprocess
+import sys
 from mapreduce.utils import listen_setup, tcp_socket
 
 
@@ -31,8 +32,8 @@ class Worker:
         # ignore invalid messages including those that fail at json decoding
         signals = {"shutdown": False}
         self.sock = tcp_socket(self.worker_port)
-        thread = threading.Thread(target=self.listen, args=(signals,))
-        thread.start()
+        worker_thread = threading.Thread(target=self.listen, args=(signals,))
+        worker_thread.start()
 
         # send the register message to Master
         self.register()
@@ -45,12 +46,23 @@ class Worker:
         while not signals["shutdown"]:
             time.sleep(1)
             count += 1
-            if count > 15:
+            if count > 8:
+                sys.exit()
                 break
 
         #if signals["shutdown"]:
-        thread.join()
+        worker_thread.join()
         self.sock.close()
+        # for testing
+        print(worker_thread.is_alive())
+        # when uncommented, worker shutdown test loops infinitely
+        #for thr in threading.enumerate():
+        #    try:
+        #        thr.join()
+        #    except:
+        #        continue
+
+        print(len(threading.enumerate()))
         print(threading.enumerate())
 
         # NOTE: the Master should ignore heartbeat messages from a worker
@@ -97,6 +109,7 @@ class Worker:
         """Handles mapping stage."""
         executable = message_dict["executable"]
         mapper_output_dir = pathlib.Path("tmp/job-" + str(self.job_counter) + "/mapper-output")
+        mapper_output_dir.mkdir(parents=True, exist_ok=True)
         output_files = []
 
         for file in message_dict["input_files"]:

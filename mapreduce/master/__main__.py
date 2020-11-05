@@ -8,6 +8,7 @@ import pathlib
 import glob
 import threading
 import socket
+import sys
 from queue import Queue
 from mapreduce.utils import listen_setup, tcp_socket
 
@@ -69,15 +70,16 @@ class Master:
             count += 1
             # TODO: as soon as a job finishes, start processing the next pending job
             # if not self.server_running: start next job
-            if count > 15:
+            if count > 8:
+                sys.exit()
                 break
     
-        if signals["shutdown"]:
-            self.send_shutdown()
+        #if signals["shutdown"]:
+        self.send_shutdown()
 
-            master_thread.join()
-            self.heartbeat_thread.join()
-            master_sock.close()
+        master_thread.join()
+        self.heartbeat_thread.join()
+        master_sock.close()
 
 
     def listen(self, signals, sock):
