@@ -54,12 +54,20 @@ class Master:
 
         # TODO: create additional threads or setup you may need. (ex: fault tolerance)
 
+        # TODO: not sure if listen and actually doing the tasks (input partitioning, mapping, grouping, reducing) should be in
+        # two separate threads?
+
         # Create a new TCP socket on the given port_number
         signals = {"shutdown": False, "first_worker": False}
         master_sock = tcp_socket(self.port)
         master_thread = threading.Thread(target=self.listen, args=(signals, master_sock,))
         master_thread.start()
 
+        # TODO: THINGS TO KEEP TRACK OF
+        # ITERATE JOB_COUNTER WHEN DONE WITH JOB (AFTER REDUCING)
+        # SET SERVER_RUNNING TO FALSE WHEN DONE WITH JOB (AFTER REDUCING)
+
+        # TO WHOEVER'S DOING GROUPING, CALL THE GROUPING FUNCTION AT THE END OF INPUT_PARTIONING()
 
         # FOR TESTING
         count = 0
@@ -72,7 +80,6 @@ class Master:
                 signals["shutdown"] = True
                 break
         
-
         self.send_shutdown()
 
         master_thread.join()
@@ -131,7 +138,7 @@ class Master:
         # create directories tmp/job-{id}. id is self.job_counter
         job_path = pathlib.Path("tmp/job-" + str(self.job_counter))
         job_path.mkdir(parents=True)
-        message_dict['job_id'] = self.job_counter # not sure if i'll regret this
+        message_dict['job_id'] = self.job_counter
         self.job_counter += 1
 
         mapper_path = pathlib.Path(job_path/"mapper-output")
@@ -145,13 +152,13 @@ class Master:
         if self.find_ready_worker() == -1 or self.server_running:
             self.job_queue.put(message_dict)
         else:
-            # TODO: begin job execution
+            # begin job execution
             self.server_running = True # TODO: when finished with job, set to False
             self.input_partitioning(message_dict)
 
 
     def input_partitioning(self, message_dict):
-        """Parition the input files and distribute files to workers to start mapping."""
+        """Parition the input files and distribute files to workers to do mapping."""
         # initialize list of num_mappers lists
         num_mappers = message_dict['num_mappers']
         file_partitions = [[] for i in range(num_mappers)]
@@ -186,9 +193,6 @@ class Master:
 
             if curr_map_idx == num_mappers:
                 break
-
-        # TODO: will have to handle getting worker status messages for mapping/grouping/reducing
-        # maybe some signals like shutdown?
             
         # if more num_mappers than workers
         if num_mappers > len(ordered_pids):
@@ -211,6 +215,8 @@ class Master:
                 self.send_tcp_message(job_json, worker_port)
 
                 curr_map_idx += 1
+
+        # TODO: GROUPING
 
 
     def find_ready_worker(self):
