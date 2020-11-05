@@ -45,23 +45,13 @@ class Worker:
         count = 0
         while not signals["shutdown"]:
             time.sleep(1)
-            count += 1
-            if count > 8:
-                sys.exit()
-                break
 
         #if signals["shutdown"]:
         worker_thread.join()
         self.sock.close()
+
         # for testing
         print(worker_thread.is_alive())
-        # when uncommented, worker shutdown test loops infinitely
-        #for thr in threading.enumerate():
-        #    try:
-        #        thr.join()
-        #    except:
-        #        continue
-
         print(len(threading.enumerate()))
         print(threading.enumerate())
 
@@ -108,7 +98,7 @@ class Worker:
     def new_worker_job(self, message_dict):
         """Handles mapping stage."""
         executable = message_dict["executable"]
-        mapper_output_dir = pathlib.Path("tmp/job-" + str(self.job_counter) + "/mapper-output")
+        mapper_output_dir = pathlib.Path(message_dict['output_directory'])
         mapper_output_dir.mkdir(parents=True, exist_ok=True)
         output_files = []
 
@@ -129,6 +119,7 @@ class Worker:
         }
 
         job_json = json.dumps(job_dict)
+        print(job_json)
 
         self.send_tcp_message(job_json)
 

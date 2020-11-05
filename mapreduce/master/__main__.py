@@ -51,7 +51,6 @@ class Master:
         self.job_counter = 0
         self.job_queue = Queue()
         self.server_running = False
-        #self.new_message = ""
 
         # TODO: create additional threads or setup you may need. (ex: fault tolerance)
 
@@ -61,7 +60,6 @@ class Master:
         master_thread = threading.Thread(target=self.listen, args=(signals, master_sock,))
         master_thread.start()
 
-        #run_thread = threading.Thread(target=self.run_jobs, args=(self.new_message))
 
         # FOR TESTING
         count = 0
@@ -71,10 +69,10 @@ class Master:
             # TODO: as soon as a job finishes, start processing the next pending job
             # if not self.server_running: start next job
             if count > 8:
-                sys.exit()
+                signals["shutdown"] = True
                 break
-    
-        #if signals["shutdown"]:
+        
+
         self.send_shutdown()
 
         master_thread.join()
@@ -172,11 +170,12 @@ class Master:
 
         for pid in ordered_pids:
             self.worker_threads[pid]['state'] = "busy"
+            output_dir = pathlib.Path("tmp/job-" + str(self.job_counter) + "/mapper-output")
             job_dict = {
                 "message_type": "new_worker_job",
                 "input_files": file_partitions[curr_map_idx],
                 "executable": message_dict['mapper_executable'],
-                "output_directory": message_dict['output_directory'],
+                "output_directory": str(ouput_dir),
                 "worker_pid": pid
             }
             job_json = json.dumps(job_dict)
