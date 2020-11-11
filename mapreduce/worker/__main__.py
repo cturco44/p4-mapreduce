@@ -20,7 +20,7 @@ class Worker:
     def __init__(self, master_port, worker_port):
         logging.info("Starting worker:%s", worker_port)
         logging.info("Worker:%s PWD %s", worker_port, os.getcwd())
-        
+
         # Class variables
         self.worker_pid = os.getpid()
         self.worker_port = worker_port
@@ -130,7 +130,7 @@ class Worker:
         return dirs[-1]
 
 
-    def send_tcp_message(self, message_json): 
+    def send_tcp_message(self, message_json):
         """Send a TCP message from the Worker to the Master."""
         try:
             # create an INET, STREAMing socket, this is TCP
@@ -146,9 +146,20 @@ class Worker:
             print(err)
 
 
-    #def send_heartbeats(self):
+    def send_heartbeats(self):
         # TODO: send heartbeats
+        msg =
+        {
+            "message_type": "heartbeat",
+            "worker_pid": self.worker_pid
+        }
 
+        hb_msg = json.dumps(msg)
+
+        with socket.socket(sock.AF_INET, socket.SOCK_DGRAM) as worker_hbsock:  #udp_socket
+            while True:
+                worker_hbsock.sendto(hb_msg.encode('utf-8'), ("localhost", self.master_port - 1))
+                time.sleep(2)
 
     def register(self):
         """Send 'register' message from Worker to the Master."""

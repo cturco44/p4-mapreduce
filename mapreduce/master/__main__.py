@@ -9,6 +9,7 @@ import glob
 import threading
 import socket
 import sys
+import shutil
 from queue import Queue
 from mapreduce.utils import listen_setup, tcp_socket
 
@@ -25,25 +26,21 @@ class Master:
         self.port = port
 
         # make new directory tmp if doesn't exist
-        p = pathlib.Path("tmp/")
-        if not os.path.isdir("tmp"): # /tmp or tmp or tmp/?
-            p.mkdir()
+        cwd = pathlib.Path.cwd()
+        tmp = cwd.parent.parent / "tmp"
+        tmp.mkdir(exist_ok=True)
 
         # delete any old job folders in tmp
-        path_string = str(p/'job-*')
-        jobPaths = glob.glob(path_string)
+        jobPaths = tmp.glob('job-*')
         # after actual tests start working, check the directories
         for path in jobPaths:
-            try:
-                os.rmdir(jobPaths)
-            except:
-                continue
+            shutil.rmtree(path)
 
         # create a new thread which will listen for udp heartbeats from workers (port - 1)
         # UDP socket for heartbeat
         heart_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         heart_sock.bind(("localhost", self.port - 1))
-        
+
         self.heartbeat_thread = threading.Thread(target=self.heartbeat_listen, args=(heart_sock,))
         self.heartbeat_thread.start()
 
@@ -79,7 +76,7 @@ class Master:
             if count > 8:
                 signals["shutdown"] = True
                 break
-        
+
         self.send_shutdown()
 
         master_thread.join()
@@ -193,7 +190,7 @@ class Master:
 
             if curr_map_idx == num_mappers:
                 break
-            
+
         # if more num_mappers than workers
         if num_mappers > len(ordered_pids):
             while curr_map_idx < num_mappers:
@@ -237,6 +234,7 @@ class Master:
             "worker_host": worker_message['worker_host'],
             "worker_port": worker_message['worker_port'],
             "state": "ready",
+            "last_seen": time.time()
         }
 
 
@@ -260,7 +258,7 @@ class Master:
             "message_type": "shutdown"
         }
         shutdown_json = json.dumps(shutdown_dict)
-        
+
         for worker in self.worker_threads.values():
             self.send_tcp_message(shutdown_json, worker['worker_port'])
 
@@ -281,8 +279,27 @@ class Master:
 
     def heartbeat_listen(self, sock):
         """Listens for UDP heartbeat messages from workers."""
-        # TODO: heartbeat
+        sock.settimeout(10) # 2s * 5 pings = 10s
 
+        while True:
+            try:
+                data, addr = sock.recvfrom() # data is a byte object, addr is (host, port)
+                cur_time = time.time()
+                msg = json.loads(data.decode())
+
+                for worker_pid, info in self.worker_threads:
+                    if cur_time - info["last_seen"] >= 10.0:
+                        self.worker_threads[worker_pid]["status"] = "dead"
+                    if worker_pid == msg["worker_pid"]:
+                        if self.worker_threads[worker_pid]["status"] != "dead":
+                            self.worker_threads[worker_pid]["last_seen"] = cur_time
+                # TODO reassign job if not complete
+            except json.JSONDecodeError:
+                continue
+            except socket.timeout: #all workers dead
+                for worker in self.worker_threads.items():
+                    worker["state"] = "dead"
+                continue
 
 @click.command()
 @click.argument("port", nargs=1, type=int)
