@@ -156,11 +156,10 @@ class Master:
         # begin job execution
         self.server_running = True
         self.mapreduce(message_dict, "map")
-        #TODO Group function
+        self.group(message_dict)
         self.mapreduce(message_dict, "reduce")
         self.wrap_up(message_dict)
         self.server_running = False
-
     def find_ready_worker(self):
         """Return worker_pid of first available worker. If none available, return -1."""
         # keys (worker_pid) in registration order
@@ -180,6 +179,89 @@ class Master:
                     job_thread.start()
                     job_thread.join()
             time.sleep(1)
+    def group(self, message_dict):
+        """Group files and then """
+        # initialize list of num_mappers lists
+        num_mappers = message_dict['num_mappers']
+        file_partitions = [[] for i in range(num_mappers)]
+
+        job_id = message_dict['job_id']
+        input_dir = pathlib.Path(message_dict["output_directory"])
+        input_files = [str(file) for file in input_dir.glob('*') if file.is_file()] #files are paths
+        sorted_files = sorted(input_files)
+
+        # partition the files into num_mappers groups
+        for index, file in enumerate(sorted_files):
+            partition_idx = index % num_mappers
+            file_partitions[partition_idx].append(file)
+
+        # initial groups. workers in registration order
+        ordered_pids = list(self.worker_threads)
+        curr_map_idx = 0
+
+        output_file_number = 1
+        output_dir = self.tmp / job_id / "mapper-output"
+        for pid in ordered_pids:
+            self.worker_threads[pid]['state'] = "busy"
+            job_dict = {
+                "message_type": "new_sort_job",
+                "input_files": file_partitions[curr_map_idx],
+                "output_file": output_dir / "sorted" + format_no(output_file_number),
+                "worker_pid": pid
+            }
+            output_file_number += 1
+            job_json = json.dumps(job_dict)
+            worker_port = self.worker_threads[pid]['worker_port']
+            self.send_tcp_message(job_json, worker_port)
+
+            curr_map_idx += 1
+
+            if curr_map_idx == num_mappers:
+                break
+
+        # if more num_mappers than workers
+        if num_mappers > len(ordered_pids):
+            while curr_map_idx < num_mappers:
+                ready_pid = self.find_ready_worker()
+                # look for ready workers
+                while ready_pid == -1:
+                    time.sleep(1)
+                    ready_pid = self.find_ready_worker()
+
+                job_dict = {
+                    "message_type": "new_sort_job",
+                    "input_files": file_partitions[curr_map_idx],
+                    "output_file": output_dir / "sorted" + format_no(output_file_number),
+                    "worker_pid": pid
+                }
+                output_file_number += 1
+                job_json = json.dumps(job_dict)
+                worker_port = self.worker_threads[ready_pid]['worker_port']
+                self.send_tcp_message(job_json, worker_port)
+
+                curr_map_idx += 1
+
+        while self.busy_workers != 0:
+            time.sleep(1)
+
+
+    def format_no(number):
+        if number < 10:
+            return '0' + str(number)
+        return str(number)
+
+
+    def find_ready_worker(self):
+        """Return worker_pid of first available worker. If none available, return -1."""
+        # keys (worker_pid) in registration order
+        ordered_pids = list(self.worker_threads)
+
+        for pid in ordered_pids:
+            if self.worker_threads[pid]['state'] == 'ready':
+                return pid
+
+        return -1
+
     def mapreduce(self, message_dict, job_type):
         # num_workers is number required in job, not total num of workers
         num_workers = message_dict['num_mappers'] if job_type == "map" else message_dict["num_reducers"]
