@@ -89,6 +89,11 @@ class Worker:
                     self.state = "busy"
                     self.new_worker_job(message_dict)
                     self.state = "ready"
+                
+                elif message_type == "new_sort_job":
+                    self.state = "busy"
+                    self.new_sort_job(message_dict)
+                    self.state = "ready"
 
 
             except json.JSONDecodeError:
@@ -106,8 +111,8 @@ class Worker:
             #input_file = file.open()
             output_dir = mapper_output_dir / file.stem
             output_files.append(str(output_dir))
-            #output_file = open(output_dir, "w")
-            with open(file, 'r') as input_file, open(out_dir, "w") as output_file:
+            output_file = open(output_dir, "w")
+            with open(file, 'r') as input_file, open(output_dir, "w") as output_file:
                 subprocess.run(args=[executable], stdin=input_file, stdout=output_file) # shell? TODO
 
         job_dict = {
@@ -122,6 +127,30 @@ class Worker:
 
         self.send_tcp_message(job_json)
 
+    def new_sort_job(self, message_dict):
+        """Handles grouping stage"""
+        message_dict["output_file"].touch(exist_ok=True)
+        lines = []
+        for file in message_dict["input_files"]:
+            open_file = open(file, 'r')
+            lines.append(open_file.readlines())
+            open_file.close()
+        lines.sort()
+        write_file = open(message_dict["output_file"], 'w')
+        for line in write_file:
+            write_file.write(line)
+        write_file.close()
+
+        job_dict = {
+            "message_type": "status",
+            "output_file": str(message_dict["output_file"]),
+            "status": "finished",
+            "worker_pid": self.worker_pid
+        }
+        job_json = json.dumps(job_dict)
+        print(job_json)
+        
+        self.send_tcp_message(job_json)
 
     def input_file_name(self, file_path):
         """Return only name of input file, given entire input path."""
@@ -147,8 +176,7 @@ class Worker:
 
     def send_heartbeats(self):
         # TODO: send heartbeats
-        msg =
-        {
+        msg = {
             "message_type": "heartbeat",
             "worker_pid": self.worker_pid
         }
