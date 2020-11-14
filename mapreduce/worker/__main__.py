@@ -98,18 +98,17 @@ class Worker:
     def new_worker_job(self, message_dict):
         """Handles mapping stage."""
         executable = message_dict["executable"]
-        mapper_output_dir = pathlib.Path(message_dict['output_directory'])
+        mapper_output_dir = message_dict['output_directory']
         mapper_output_dir.mkdir(parents=True, exist_ok=True)
         output_files = []
 
         for file in message_dict["input_files"]:
-            input_file = open(file)
-            output_dir = str(mapper_output_dir/self.input_file_name(file))
-
-            output_files.append(output_dir)
-            output_file = open(output_dir, "w")
-
-            subprocess.run(args=[executable], stdin=input_file, stdout=output_file) # shell?
+            #input_file = file.open()
+            output_dir = mapper_output_dir / file.stem
+            output_files.append(str(output_dir))
+            #output_file = open(output_dir, "w")
+            with open(file, 'r') as input_file, open(out_dir, "w") as output_file:
+                subprocess.run(args=[executable], stdin=input_file, stdout=output_file) # shell? TODO
 
         job_dict = {
             "message_type": "status",

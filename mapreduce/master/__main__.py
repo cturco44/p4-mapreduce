@@ -29,6 +29,7 @@ class Master:
         cwd = pathlib.Path.cwd()
         tmp = cwd.parent.parent / "tmp"
         tmp.mkdir(exist_ok=True)
+        self.tmp = tmp
 
         # delete any old job folders in tmp
         jobPaths = tmp.glob('job-*')
@@ -45,6 +46,7 @@ class Master:
         self.heartbeat_thread.start()
 
         self.worker_threads = {}
+        self.busy_workers = 0
         self.job_counter = 0
         self.job_queue = Queue()
         self.server_running = False
@@ -54,11 +56,14 @@ class Master:
         # TODO: not sure if listen and actually doing the tasks (input partitioning, mapping, grouping, reducing) should be in
         # two separate threads?
 
+        check_queue_thread = threading.Thread(target=self.check_queue, args=(self.job_queue,))
+        check_queue_thread.start()
         # Create a new TCP socket on the given port_number
         signals = {"shutdown": False, "first_worker": False}
         master_sock = tcp_socket(self.port)
         master_thread = threading.Thread(target=self.listen, args=(signals, master_sock,))
         master_thread.start()
+
 
         # TODO: THINGS TO KEEP TRACK OF
         # ITERATE JOB_COUNTER WHEN DONE WITH JOB (AFTER REDUCING)
@@ -77,8 +82,8 @@ class Master:
                 signals["shutdown"] = True
                 break
 
-        self.send_shutdown()
-
+        self.send_shutdown() # here or in listen()?
+        # check_queue_thread.join ? daemon?
         master_thread.join()
         self.heartbeat_thread.join()
         master_sock.close()
@@ -111,9 +116,9 @@ class Master:
                         signals["first_worker"] = True
                         # TODO: if the master is already executing a map/group/reduce, it should assign the Worker the next available task immediately
                         # if self.server_running: assign this worker the next task
-
+                        # taken care of by check_queue?
                 elif message_type == "new_master_job":
-                    self.new_master_job(message_dict) # this modifies message_dict. adds job_id key.
+                    self.job_queue.put(message_dict)
 
                 elif message_type == "status":
                     self.worker_status(message_dict)
@@ -128,30 +133,33 @@ class Master:
 
         if message_dict['status'] == "finished":
             self.worker_threads[pid]['state'] = "ready"
+            self.busy_workers -= 1
 
 
     def new_master_job(self, message_dict):
         """Handle new_master_job message."""
         # create directories tmp/job-{id}. id is self.job_counter
-        job_path = pathlib.Path("tmp/job-" + str(self.job_counter))
+        job_path = self.tmp / "job-{}".format(str(self.job_counter))
         job_path.mkdir(parents=True)
         message_dict['job_id'] = self.job_counter
         self.job_counter += 1
 
-        mapper_path = pathlib.Path(job_path/"mapper-output")
-        grouper_path = pathlib.Path(job_path/"grouper-output")
-        reducer_path = pathlib.Path(job_path/"reducer-output")
+        mapper_path = job_path / "mapper-output"
+        grouper_path = job_path / "grouper-output"
+        reducer_path = job_path / "reducer-output"
         mapper_path.mkdir(parents=True)
         grouper_path.mkdir(parents=True)
         reducer_path.mkdir(parents=True)
 
-        # if MapReduce server is busy or no available workers, add job to queue
-        if self.find_ready_worker() == -1 or self.server_running:
-            self.job_queue.put(message_dict)
-        else:
-            # begin job execution
-            self.server_running = True # TODO: when finished with job, set to False
-            self.input_partitioning(message_dict)
+
+        # begin job execution
+        self.server_running = True
+        self.mapreduce(message_dict, "map")
+        #TODO Group function
+        self.mapreduce(message_dict, "reduce")
+        self.wrap_up(message_dict)
+        self.server_running = False
+        #self.input_partitioning(message_dict)
 
 
     def input_partitioning(self, message_dict):
@@ -161,12 +169,14 @@ class Master:
         file_partitions = [[] for i in range(num_mappers)]
 
         job_id = message_dict['job_id']
-        sorted_files = sorted(os.listdir(message_dict['input_directory']))
+        input_dir = pathlib.Path(message_dict["input_directory"])
+        input_files = [str(file) for file in input_dir.glob('*') if file.is_file()] #files are paths
+        sorted_files = sorted(input_files)
 
         # partition the files into num_mappers groups
         for index, file in enumerate(sorted_files):
             partition_idx = index % num_mappers
-            file_partitions[partition_idx].append(message_dict['input_directory'] + "/" + file)
+            file_partitions[partition_idx].append(file)
 
         # initial groups. workers in registration order
         ordered_pids = list(self.worker_threads)
@@ -174,7 +184,7 @@ class Master:
 
         for pid in ordered_pids:
             self.worker_threads[pid]['state'] = "busy"
-            output_dir = pathlib.Path("tmp/job-" + str(self.job_counter) + "/mapper-output")
+            output_dir = self.tmp / job_id / "mapper-output"
             job_dict = {
                 "message_type": "new_worker_job",
                 "input_files": file_partitions[curr_map_idx],
@@ -227,7 +237,65 @@ class Master:
 
         return -1
 
+    def mapreduce(self, message_dict, job_type):
+        # num_workers is number required in job, not total num of workers
+        num_workers = message_dict['num_mappers'] if job_type == "map" else message_dict["num_reducers"]
 
+        file_partitions = [[] for _ in range(num_workers)]
+
+        job_id = message_dict['job_id']
+        job_dir = self.tmp / "job-{}".format(str(job_id))
+
+        input_dir = pathlib.Path(message_dict["input_directory"])
+        input_files = [str(file) for file in input_dir.iterdir() if file.is_file()] #files are paths
+        sorted_files = sorted(input_files)
+
+        tmp_output = "mapper-output" if job_type == "map" else "reducer-output"
+        output_dir = job_dir / tmp_output
+        # partition the files into num_mappers groups
+        for index, file in enumerate(sorted_files):
+            partition_idx = index % num_workers
+            file_partitions[partition_idx].append(file)
+
+        cur_work_idx = 0
+
+        executable_type = "mapper-executable" if job_type == "map" else "reducer-executable"
+
+        while cur_work_idx < num_workers:
+            ready_worker_id = -1
+            while ready_worker_id == -1
+                time.sleep(1)
+                ready_worker_id = self.find_ready_worker()
+
+            job_dict = {
+                "message_type": "new_worker_job",
+                "input_files": file_partitions[cur_work_idx],
+                "executable": message_dict[executable_type],
+                "output_directory": str(output_dir),
+                "worker_pid": ready_worker_id
+            }
+            job_json = json.dumps(job_dict)
+            self.worker_threads[ready_worker_id]['state'] = "busy"
+            self.busy_workers += 1
+            worker_port = self.worker_threads[ready_worker_id]['worker_port']
+            self.send_tcp_message(job_json, worker_port)
+
+            cur_work_idx += 1
+        #modify input directory for next phase after all jobs for this phase is done
+        message_dict['input_directory'] = str(output_dir)
+        while self.busy_workers != 0:
+            time.sleep(1)
+        # if while loop ends, this means all work needed for this job is done
+
+    def wrap_up(self, message_dict):
+        input_dir = message_dict['input_directory']
+        output_dir = pathlib.Path(message_dict['output_directory'])
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        for path in pathlib.Path(input_dir).iterdir():
+            num = str(path.stem)[6:]
+            outputfile = "outputfile" + num
+            path.rename(output_dir / outputfile) # renaming moves the file to new location
     def register_worker(self, worker_message):
         """Add new worker to self.worker_threads dict."""
         self.worker_threads[worker_message['worker_pid']] = {
@@ -276,7 +344,14 @@ class Master:
             print("Failed to send a message to a worker at port " + str(worker_port))
             print(err)
 
-
+    def check_queue(self, queue):
+        while True:
+            if queue:
+                if self.find_ready_worker() != -1 and not self.server_running:
+                    message_dict = queue.get()
+                    job_thread = threading.Thread(target=self.new_master_job, args=(message_dict,))
+                    job_thread.start()
+                    job_thread.join()
     def heartbeat_listen(self, sock):
         """Listens for UDP heartbeat messages from workers."""
         sock.settimeout(10) # 2s * 5 pings = 10s
@@ -287,7 +362,7 @@ class Master:
                 cur_time = time.time()
                 msg = json.loads(data.decode())
 
-                for worker_pid, info in self.worker_threads:
+                for worker_pid, info in self.worker_threads.items():
                     if cur_time - info["last_seen"] >= 10.0:
                         self.worker_threads[worker_pid]["status"] = "dead"
                     if worker_pid == msg["worker_pid"]:
@@ -297,7 +372,7 @@ class Master:
             except json.JSONDecodeError:
                 continue
             except socket.timeout: #all workers dead
-                for worker in self.worker_threads.items():
+                for id, worker in self.worker_threads.items():
                     worker["state"] = "dead"
                 continue
 
