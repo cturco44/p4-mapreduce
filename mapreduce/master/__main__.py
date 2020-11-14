@@ -161,7 +161,7 @@ class Master:
         self.server_running = False
         #self.input_partitioning(message_dict)
 
-
+    '''
     def input_partitioning(self, message_dict):
         """Parition the input files and distribute files to workers to do mapping."""
         # initialize list of num_mappers lists
@@ -224,7 +224,7 @@ class Master:
                 curr_map_idx += 1
 
         # TODO: GROUPING
-
+    '''
 
     def find_ready_worker(self):
         """Return worker_pid of first available worker. If none available, return -1."""
