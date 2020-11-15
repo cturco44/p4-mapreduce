@@ -26,43 +26,48 @@ class Worker:
         self.worker_port = worker_port
         self.master_port = master_port
         self.state = "not_ready"
+        self.job_type = "idle"
+        self.job_json = None
         self.job_counter = 0 # TODO: increment when done with current job
+        self.heartbeat_thread = None
 
         # Create new tcp socket on the worker_port and call listen(). only one listen().
         # ignore invalid messages including those that fail at json decoding
-        signals = {"shutdown": False}
+        self.shutdown = False
         self.sock = tcp_socket(self.worker_port)
-        worker_thread = threading.Thread(target=self.listen, args=(signals,))
+        worker_thread = threading.Thread(target=self.listen)
         worker_thread.start()
 
-        # send the register message to Master
-        self.register()
-
-        # TODO: upon receiving the register_ack message, create a new thread which will be
-        # responsible for sending heartbeat messages to the Master
-
+        check_job_thread = threading.Thread(target=self.check_if_job)
+        check_job_thread.start()
+        '''
         # FOR TESTING
         count = 0
         while not signals["shutdown"]:
             time.sleep(1)
-
+        '''
         #if signals["shutdown"]:
+        check_job_thread.join()
+        print("f")
         worker_thread.join()
+        print("g")
         self.sock.close()
-
+        print("h")
         # for testing
-        print(worker_thread.is_alive())
-        print(len(threading.enumerate()))
-        print(threading.enumerate())
+        print(self.worker_pid," alive? ",worker_thread.is_alive())
+        #print(len(threading.enumerate()))
+        #print(threading.enumerate())
 
         # NOTE: the Master should ignore heartbeat messages from a worker
         # before that worker has successfully registered
 
 
-    def listen(self, signals):
+    def listen(self):
         """Wait on a message from a socket or a shutdown signal."""
+        # send the register message to Master
+        self.register()
         self.sock.settimeout(1)
-        while not signals["shutdown"]:
+        while not self.shutdown:
             message_str = listen_setup(self.sock)
 
             if message_str == "":
@@ -72,47 +77,55 @@ class Worker:
                 message_dict = json.loads(message_str)
                 message_type = message_dict["message_type"]
                 # TODO: for testing
-                print(message_dict)
+                print("Worker {} recv msg: ".format(self.worker_pid), message_dict)
 
                 if message_type == "shutdown":
-                    signals["shutdown"] = True
-                    break
-                    #thread.join()
-                    #self.sock.close()
+                    self.shutdown = True
+                    if self.heartbeat_thread != None:
+                        self.heartbeat_thread.join()
+                        print("e")
 
                 elif message_type == "register_ack":
-                    # TODO: start sending heartbeats
+                    self.heartbeat_thread = threading.Thread(target=self.send_heartbeats)
                     self.state = "ready"
-                    #self.send_heartbeats()
+                    self.heartbeat_thread.start()
 
                 elif message_type == "new_worker_job":
-                    self.state = "busy"
-                    self.new_worker_job(message_dict)
-                    self.state = "ready"
-                
+                    self.job_type = "mapreduce"
+                    self.job_json = message_dict
+
                 elif message_type == "new_sort_job":
-                    self.state = "busy"
-                    self.new_sort_job(message_dict)
-                    self.state = "ready"
+                    self.job_type = "group"
+                    self.job_json = message_dict
 
 
             except json.JSONDecodeError:
                 continue
 
+    def check_if_job(self):
+        while not self.shutdown:
+            if self.state == "ready" and self.job_type != "idle":
+                self.state = "busy"
+                msg_dict = self.job_json
+                work = self.new_worker_job if self.job_type == "mapreduce" else self.new_sort_job
+                work(msg_dict)
 
     def new_worker_job(self, message_dict):
-        """Handles mapping stage."""
+        """Handles mapping and reducing stage."""
         executable = message_dict["executable"]
-        mapper_output_dir = message_dict['output_directory']
+        print(executable)
+        mapper_output_dir = pathlib.Path(message_dict['output_directory'])
         mapper_output_dir.mkdir(parents=True, exist_ok=True)
         output_files = []
 
         for file in message_dict["input_files"]:
             #input_file = file.open()
+            file = pathlib.Path(file)
             output_dir = mapper_output_dir / file.stem
             output_files.append(str(output_dir))
             output_file = open(output_dir, "w")
             with open(file, 'r') as input_file, open(output_dir, "w") as output_file:
+                subprocess.run(args = ["chmod", "+x", executable])
                 subprocess.run(args=[executable], stdin=input_file, stdout=output_file) # shell? TODO
 
         job_dict = {
@@ -122,10 +135,12 @@ class Worker:
             "worker_pid": self.worker_pid
         }
 
-        job_json = json.dumps(job_dict)
+        job_json = json.dumps(job_dict, indent=2)
         print(job_json)
 
         self.send_tcp_message(job_json)
+        self.state = "ready"
+        self.job_type = "idle"
 
     def new_sort_job(self, message_dict):
         """Handles grouping stage"""
@@ -147,10 +162,12 @@ class Worker:
             "status": "finished",
             "worker_pid": self.worker_pid
         }
-        job_json = json.dumps(job_dict)
+        job_json = json.dumps(job_dict, indent=2)
         print(job_json)
-        
+
         self.send_tcp_message(job_json)
+        self.state = "ready"
+        self.job_type = "idle"
 
     def input_file_name(self, file_path):
         """Return only name of input file, given entire input path."""
@@ -175,19 +192,18 @@ class Worker:
 
 
     def send_heartbeats(self):
-        # TODO: send heartbeats
         msg = {
             "message_type": "heartbeat",
             "worker_pid": self.worker_pid
         }
 
-        hb_msg = json.dumps(msg)
-
-        with socket.socket(sock.AF_INET, socket.SOCK_DGRAM) as worker_hbsock:  #udp_socket
-            while True:
-                worker_hbsock.sendto(hb_msg.encode('utf-8'), ("localhost", self.master_port - 1))
-                time.sleep(2)
-
+        hb_msg = json.dumps(msg, indent=2)
+        worker_hbsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        while not self.shutdown:
+            print("Worker {} sending heartbeat".format(self.worker_pid))
+            worker_hbsock.sendto(hb_msg.encode('utf-8'), ("localhost", self.master_port - 1))
+            time.sleep(2)
+        worker_hbsock.close()
     def register(self):
         """Send 'register' message from Worker to the Master."""
         register_dict = {
@@ -197,7 +213,7 @@ class Worker:
             "worker_pid": self.worker_pid
         }
 
-        message_json = json.dumps(register_dict)
+        message_json = json.dumps(register_dict, indent=2)
         self.send_tcp_message(message_json)
 
         logging.debug(
