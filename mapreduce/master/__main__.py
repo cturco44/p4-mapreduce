@@ -19,7 +19,9 @@ logging.basicConfig(level=logging.DEBUG)
 
 class Master:
     """Master class."""
+
     def __init__(self, port):
+        """Initialize Master class."""
         logging.info("Starting master:%s", port)
         logging.info("Master:%s PWD %s", port, os.getcwd())
 
@@ -134,7 +136,7 @@ class Master:
         reducer_path.mkdir(parents=True)
 
     def execute_task(self, message_dict):
-        """Executes task."""
+        """Execute task."""
         # begin job execution
         self.server_running = True
         self.mapreduce(message_dict, "map")
@@ -146,7 +148,7 @@ class Master:
 
 
     def check_queue(self):
-        """Checks queue"""
+        """Check queue."""
         while not self.shutdown:
             if not self.job_queue.empty():
                 if not self.server_running and self.find_ready_worker() != -1:
@@ -155,8 +157,7 @@ class Master:
             # time.sleep(1)
 
     def group(self, message_dict):
-        """Group files and then """
-        # num_workers is number required in job, not total num of workers
+        """Group files and make directories."""
         num_workers = self.get_num_available_workers()
 
         file_partitions = [[] for _ in range(num_workers)]
@@ -215,7 +216,7 @@ class Master:
 
 
     def get_num_available_workers(self):
-        """Gets num available workers."""
+        """Get num available workers."""
         available = 0
         for key in self.worker_threads:
             if self.worker_threads[key]["state"] == "ready":
@@ -235,7 +236,7 @@ class Master:
 
 
     def mapreduce(self, message_dict, job_type):
-        """Reduces and maps"""
+        """Reduce and map execution."""
         # num_workers is number required in job, not total num of workers
         num_workers = (
             message_dict["num_mappers"]
@@ -294,7 +295,7 @@ class Master:
 
 
     def fault_tolerance(self):
-        """Checks fault tolerance."""
+        """Check fault tolerance."""
         while not self.shutdown:
 
             if not self.dead_job_queue.empty():
@@ -338,7 +339,7 @@ class Master:
 
 
     def heartbeat_listen(self, sock):
-        """Listens for UDP heartbeat messages from workers."""
+        """Listen for UDP heartbeat messages from workers."""
         sock.settimeout(1)
         while not self.shutdown:
             try:
@@ -357,7 +358,7 @@ class Master:
 
 
     def heartbeat_helper(self, cur_time, msg):
-        """Helper function for heartbeat_listen()."""
+        """Is helper function for heartbeat_listen()."""
         for worker_pid, info in self.worker_threads.items():
             if cur_time - info["last_seen"] >= 10.0:
                 if worker_pid in self.busy_workers:
@@ -432,7 +433,7 @@ def create_reducer_files(message_dict):
 
 
 def group_helper(message_dict):
-    """Helper function for group()."""
+    """Is helper function for group()."""
     input_dir = pathlib.Path(message_dict["input_directory"])
     starter_files = [str(file) for file in input_dir.iterdir() if file.is_file()]
     file_list = []
@@ -469,7 +470,7 @@ def group_helper(message_dict):
 
 
 def mapreduce_helper(job_type, message_dict):
-    """Helper for mapreduce()."""
+    """Is helper for mapreduce()."""
     input_dir = pathlib.Path(message_dict["input_directory"])
     if job_type == "map":
         input_files = [
@@ -487,7 +488,7 @@ def mapreduce_helper(job_type, message_dict):
 @click.command()
 @click.argument("port", nargs=1, type=int)
 def main(port):
-    """Runs main."""
+    """Run main."""
     Master(port)
 
 
