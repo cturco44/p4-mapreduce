@@ -317,7 +317,7 @@ class Master:
         if job_type == "map":
             input_files = [str(file) for file in input_dir.iterdir() if file.is_file()] #files are paths
         else:
-            input_files = [str(file.relative_to(self.home)) for file in input_dir.iterdir() if file.is_file()]
+            input_files = [str(file.relative_to(self.home)) for file in input_dir.glob('reduce*') if file.is_file()]
         sorted_files = sorted(input_files)
 
         tmp_output = "mapper-output" if job_type == "map" else "reducer-output"
