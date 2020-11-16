@@ -131,6 +131,8 @@ class Master:
 
             except json.JSONDecodeError:
                 continue
+            except socket.timeout:
+                continue
 
 
     def worker_status(self, message_dict):
@@ -208,12 +210,18 @@ class Master:
 
         cur_work_idx = 0
         output_file_number = 1
+<<<<<<< HEAD
         while cur_work_idx < num_workers:
             ready_worker_id = -1
             while ready_worker_id == -1:
                 #time.sleep(1)
                 ready_worker_id = self.find_ready_worker()
                
+=======
+        output_dir = self.tmp / str(job_id) / "grouper-output"
+        for pid in ordered_pids:
+            self.worker_threads[pid]['state'] = "busy"
+>>>>>>> Small syntax
             job_dict = {
                 "message_type": "new_sort_job",
                 "input_files": file_partitions[cur_work_idx],
@@ -317,7 +325,7 @@ class Master:
         cur_work_idx = 0
 
         executable_type = "mapper_executable" if job_type == "map" else "reducer_executable"
-
+        
         while cur_work_idx < num_workers:
             ready_worker_id = -1
             while ready_worker_id == -1:
