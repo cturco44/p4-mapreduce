@@ -447,6 +447,7 @@ class Master:
                 data = sock.recv(4096) # data is a byte object
                 cur_time = time.time()
                 msg = json.loads(data.decode())
+                print("master receive hb from {}".format(msg['worker_pid']))
                 if msg['worker_pid'] in self.worker_threads: #ignore not registered worker heartbeat
                     for worker_pid, info in self.worker_threads.items():
                         if cur_time - info["last_seen"] >= 10.0:
