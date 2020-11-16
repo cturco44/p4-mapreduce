@@ -13,6 +13,7 @@ import shutil
 from queue import Queue
 from mapreduce.utils import listen_setup, tcp_socket
 from heapq import merge
+import pdb
 
 
 # Configure logging
@@ -27,6 +28,7 @@ class Master:
         self.port = port
 
         # make new directory tmp if doesn't exist
+        self.cwd = pathlib.Path.cwd()
         tmp = pathlib.Path.cwd() / "tmp"
         tmp.mkdir(exist_ok=True)
         self.tmp = tmp
@@ -111,7 +113,7 @@ class Master:
                 message_dict = json.loads(message_str)
                 message_type = message_dict["message_type"]
                 # TODO: for testing
-                print("Master recv msg: ", json.dumps(message_dict, indent=2))
+                print("Master recv msg: ", json.dumps(message_dict))
 
                 if message_type == "shutdown":
                     self.shutdown = True
@@ -165,6 +167,7 @@ class Master:
         self.server_running = True
         self.mapreduce(message_dict, "map")
         self.group(message_dict)
+        #pdb.set_trace()
         self.mapreduce(message_dict, "reduce")
         self.wrap_up(message_dict)
         self.server_running = False
@@ -197,7 +200,7 @@ class Master:
         job_dir = self.tmp / "job-{}".format(str(job_id))
 
         input_dir = pathlib.Path(message_dict["input_directory"])
-        input_files = [str(file) for file in input_dir.iterdir() if file.is_file()] #files are paths
+        input_files = [str(file.relative_to(self.cwd)) for file in input_dir.iterdir() if file.is_file()] #files are paths
         sorted_files = sorted(input_files)
 
         output_dir = job_dir / "grouper-output"
@@ -213,15 +216,15 @@ class Master:
             while ready_worker_id == -1:
                 #time.sleep(1)
                 ready_worker_id = self.find_ready_worker()
-               
+            #pdb.set_trace()
             job_dict = {
                 "message_type": "new_sort_job",
                 "input_files": file_partitions[cur_work_idx],
-                "output_file": str(output_dir / ("sorted" + self.format_no(output_file_number))),
+                "output_file": str(((output_dir / ("sorted" + self.format_no(output_file_number)))).relative_to(self.cwd)),
                 "worker_pid": ready_worker_id
             }
             output_file_number += 1
-            job_json = json.dumps(job_dict, indent=2)
+            job_json = json.dumps(job_dict)
             self.worker_threads[ready_worker_id]['state'] = "busy"
             self.busy_workers[ready_worker_id] = job_json
             worker_port = self.worker_threads[ready_worker_id]['worker_port']
@@ -304,7 +307,11 @@ class Master:
         job_dir = self.tmp / "job-{}".format(str(job_id))
 
         input_dir = pathlib.Path(message_dict["input_directory"])
-        input_files = [str(file) for file in input_dir.iterdir() if file.is_file()] #files are paths
+
+        if job_type == "reduce":
+            input_files = [str(file.relative_to(self.cwd)) for file in input_dir.iterdir() if file.is_file()] #files are paths
+        else:
+            input_files = [str(file) for file in input_dir.iterdir() if file.is_file()] #files are paths
         sorted_files = sorted(input_files)
 
         tmp_output = "mapper-output" if job_type == "map" else "reducer-output"
@@ -323,15 +330,15 @@ class Master:
             while ready_worker_id == -1:
                 #time.sleep(1)
                 ready_worker_id = self.find_ready_worker()
-
+                
             job_dict = {
                 "message_type": "new_worker_job",
                 "input_files": file_partitions[cur_work_idx],
                 "executable": message_dict[executable_type],
-                "output_directory": str(output_dir),
+                "output_directory": str(output_dir.relative_to(self.cwd)),
                 "worker_pid": ready_worker_id
             }
-            job_json = json.dumps(job_dict, indent=2)
+            job_json = json.dumps(job_dict)
             self.worker_threads[ready_worker_id]['state'] = "busy"
             self.busy_workers[ready_worker_id] = job_json
             worker_port = self.worker_threads[ready_worker_id]['worker_port']
@@ -390,7 +397,7 @@ class Master:
             "worker_pid": worker_message["worker_pid"]
         }
 
-        reg_json = json.dumps(reg_response_dict, indent=2)
+        reg_json = json.dumps(reg_response_dict)
 
         self.send_tcp_message(reg_json, reg_response_dict["worker_port"])
 
@@ -400,7 +407,7 @@ class Master:
         shutdown_dict = {
             "message_type": "shutdown"
         }
-        shutdown_json = json.dumps(shutdown_dict, indent=2)
+        shutdown_json = json.dumps(shutdown_dict)
 
         for worker in self.worker_threads.values():
             self.send_tcp_message(shutdown_json, worker['worker_port'])
