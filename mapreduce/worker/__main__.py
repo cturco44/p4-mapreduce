@@ -28,7 +28,7 @@ class Worker:
         self.state = "not_ready"
         self.job_type = "idle"
         self.job_json = None
-        self.job_counter = 0 # TODO: increment when done with current job
+        self.job_counter = 0  # TODO: increment when done with current job
         self.heartbeat_thread = None
 
         # Create new tcp socket on the worker_port and call listen(). only one listen().
@@ -46,7 +46,7 @@ class Worker:
         while not signals["shutdown"]:
             time.sleep(1)
         '''
-        #if signals["shutdown"]:
+        # if signals["shutdown"]:
         check_job_thread.join()
         print("f")
         worker_thread.join()
@@ -54,13 +54,12 @@ class Worker:
         self.sock.close()
         print("h")
         # for testing
-        print(self.worker_pid," alive? ",worker_thread.is_alive())
-        #print(len(threading.enumerate()))
-        #print(threading.enumerate())
+        print(self.worker_pid, " alive? ", worker_thread.is_alive())
+        # print(len(threading.enumerate()))
+        # print(threading.enumerate())
 
         # NOTE: the Master should ignore heartbeat messages from a worker
         # before that worker has successfully registered
-
 
     def listen(self):
         """Wait on a message from a socket or a shutdown signal."""
@@ -77,7 +76,8 @@ class Worker:
                 message_dict = json.loads(message_str)
                 message_type = message_dict["message_type"]
                 # TODO: for testing
-                print("Worker {} recv msg: ".format(self.worker_pid), message_dict)
+                print("Worker {} recv msg: ".format(
+                    self.worker_pid), message_dict)
 
                 if message_type == "shutdown":
                     self.shutdown = True
@@ -86,7 +86,8 @@ class Worker:
                         print("e")
 
                 elif message_type == "register_ack":
-                    self.heartbeat_thread = threading.Thread(target=self.send_heartbeats)
+                    self.heartbeat_thread = threading.Thread(
+                        target=self.send_heartbeats)
                     self.state = "ready"
                     self.heartbeat_thread.start()
 
@@ -97,7 +98,6 @@ class Worker:
                 elif message_type == "new_sort_job":
                     self.job_type = "group"
                     self.job_json = message_dict
-
 
             except json.JSONDecodeError:
                 continue
@@ -125,8 +125,10 @@ class Worker:
             output_files.append(str(output_dir))
             output_file = open(output_dir, "w")
             with open(file, 'r') as input_file, open(output_dir, "w") as output_file:
-                subprocess.run(args = ["chmod", "+x", executable])
-                subprocess.run(args=[executable], stdin=input_file, stdout=output_file) # shell? TODO
+                subprocess.run(args=["chmod", "+x", executable])
+                # shell? TODO
+                subprocess.run(args=[executable],
+                               stdin=input_file, stdout=output_file)
 
         job_dict = {
             "message_type": "status",
@@ -175,7 +177,6 @@ class Worker:
         dirs = file_path.split("/")
         return dirs[-1]
 
-
     def send_tcp_message(self, message_json):
         """Send a TCP message from the Worker to the Master."""
         try:
@@ -191,7 +192,6 @@ class Worker:
             print("Failed to send message to Master.")
             print(err)
 
-
     def send_heartbeats(self):
         msg = {
             "message_type": "heartbeat",
@@ -206,6 +206,7 @@ class Worker:
             worker_hbsock.sendall(hb_msg.encode('utf-8'))
             time.sleep(2)
         worker_hbsock.close()
+
     def register(self):
         """Send 'register' message from Worker to the Master."""
         register_dict = {
@@ -223,7 +224,6 @@ class Worker:
             self.worker_port,
             json.dumps(register_dict),
         )
-
 
 
 @click.command()

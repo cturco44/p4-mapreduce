@@ -32,7 +32,6 @@ class Master:
         self.tmp = pathlib.Path.cwd() / "tmp"
         self.tmp.mkdir(exist_ok=True)
 
-
         # delete any old job folders in tmp
         jobPaths = self.tmp.glob('job-*')
         # after actual tests start working, check the directories
@@ -44,7 +43,7 @@ class Master:
         self.busy_workers = {}
         self.job_counter = 0
         self.job_queue = Queue()
-        self.dead_job_queue = Queue() #store job_json of dead workers
+        self.dead_job_queue = Queue()  # store job_json of dead workers
         self.server_running = False
 
         # create a new thread which will listen for udp heartbeats from workers (port - 1)
@@ -58,17 +57,16 @@ class Master:
         fault_tol_thread = threading.Thread(target=self.fault_tolerance)
         fault_tol_thread.start()
 
-        heartbeat_thread = threading.Thread(target=self.heartbeat_listen, args=(heart_sock,))
+        heartbeat_thread = threading.Thread(
+            target=self.heartbeat_listen, args=(heart_sock,))
         heartbeat_thread.start()
-
-
 
         # Create a new TCP socket on the given port_number
 
         master_sock = tcp_socket(self.port)
-        master_thread = threading.Thread(target=self.listen, args=(master_sock,))
+        master_thread = threading.Thread(
+            target=self.listen, args=(master_sock,))
         master_thread.start()
-
 
         # TODO: THINGS TO KEEP TRACK OF
         # ITERATE JOB_COUNTER WHEN DONE WITH JOB (AFTER REDUCING)
@@ -87,8 +85,8 @@ class Master:
                 break
         '''
         #print("Master :",len(threading.enumerate()))
-        #print(threading.enumerate())
-        #print(self.dead_job_queue.empty())
+        # print(threading.enumerate())
+        # print(self.dead_job_queue.empty())
         heartbeat_thread.join()
         print("a")
         check_queue_thread.join()
@@ -100,6 +98,7 @@ class Master:
 
         master_sock.close()
         print("Master finish shutdown")
+
     def listen(self, sock):
         """Wait on a message from a socket or a shutdown signal."""
         sock.settimeout(1)
@@ -116,10 +115,8 @@ class Master:
                 print("Master recv msg: ", json.dumps(message_dict))
 
                 if message_type == "shutdown":
-                    self.send_shutdown() #got shutdown signal
+                    self.send_shutdown()  # got shutdown signal
                     self.shutdown = True
-
-
 
                 elif message_type == "register":
                     self.register_worker(message_dict)
@@ -137,7 +134,6 @@ class Master:
             except socket.timeout:
                 continue
 
-
     def worker_status(self, message_dict):
         """Update state of worker."""
         pid = message_dict["worker_pid"]
@@ -145,7 +141,6 @@ class Master:
         if message_dict['status'] == "finished":
             self.worker_threads[pid]['state'] = "ready"
             self.busy_workers.pop(pid)
-
 
     def new_master_job(self, message_dict):
         """Handle new_master_job message."""
@@ -163,14 +158,12 @@ class Master:
         grouper_path.mkdir(parents=True)
         reducer_path.mkdir(parents=True)
 
-
-
     def execute_task(self, message_dict):
         # begin job execution
         self.server_running = True
         self.mapreduce(message_dict, "map")
         self.group(message_dict)
-        #pdb.set_trace()
+        # pdb.set_trace()
         self.mapreduce(message_dict, "reduce")
         self.wrap_up(message_dict)
         self.server_running = False
@@ -185,13 +178,15 @@ class Master:
                 return pid
 
         return -1
+
     def check_queue(self):
         while not self.shutdown:
             if not self.job_queue.empty():
                 if not self.server_running and self.find_ready_worker() != -1:
                     message_dict = self.job_queue.get()
                     self.execute_task(message_dict)
-            #time.sleep(1)
+            # time.sleep(1)
+
     def group(self, message_dict):
         print("group called")
         """Group files and then """
@@ -204,7 +199,8 @@ class Master:
         job_dir = self.tmp / "job-{}".format(str(job_id))
 
         input_dir = pathlib.Path(message_dict["input_directory"])
-        input_files = [str(file.relative_to(self.home)) for file in input_dir.iterdir() if file.is_file()] #files are paths
+        input_files = [str(file.relative_to(self.home))
+                       for file in input_dir.iterdir() if file.is_file()]  # files are paths
         sorted_files = sorted(input_files)
 
         output_dir = job_dir / "grouper-output"
@@ -220,14 +216,15 @@ class Master:
             print("group running")
             ready_worker_id = -1
             while ready_worker_id == -1:
-                #time.sleep(1)
+                # time.sleep(1)
                 if not self.shutdown:
                     ready_worker_id = self.find_ready_worker()
                     if ready_worker_id != -1:
                         print("sort worker found {} ".format(ready_worker_id))
                 else:
                     break
-            output_file = output_dir / ("sorted" + self.format_no(output_file_number))
+            output_file = output_dir / \
+                ("sorted" + self.format_no(output_file_number))
             job_dict = {
                 "message_type": "new_sort_job",
                 "input_files": file_partitions[cur_work_idx],
@@ -242,24 +239,25 @@ class Master:
             self.send_tcp_message(job_json, worker_port)
 
             cur_work_idx += 1
-        #modify input directory for next phase after all jobs for this phase is done
+        # modify input directory for next phase after all jobs for this phase is done
         message_dict['input_directory'] = str(output_dir)
         while self.busy_workers:
-            #time.sleep(1) ?
+            # time.sleep(1) ?
             if self.shutdown:
                 break
             continue
         print("sorting finished")
 
         input_dir = pathlib.Path(message_dict["input_directory"])
-        starter_files = [str(file) for file in input_dir.iterdir() if file.is_file()]
+        starter_files = [str(file)
+                         for file in input_dir.iterdir() if file.is_file()]
         file_list = []
         for grouper_file in starter_files:
             f = open(grouper_file, "r")
             file_list.append(f)
         it = merge(*file_list)
 
-        #create new files
+        # create new files
         reducer_files = []
         for i in range(message_dict['num_reducers']):
             reducer_path = input_dir / ("reduce" + self.format_no(i + 1))
@@ -284,26 +282,29 @@ class Master:
 
             except StopIteration:
                 break
-        #close all files
+        # close all files
         for item in reducer_files:
             item.close()
         for item in file_list:
             item.close()
-        #delete old files
+        # delete old files
         '''
         for p in input_dir.glob("sorted*"):
             p.unlink()
         '''
+
     def format_no(self, number):
         if number < 10:
             return '0' + str(number)
         return str(number)
+
     def get_num_available_workers(self):
         available = 0
         for key in self.worker_threads:
             if self.worker_threads[key]["state"] == "ready":
                 available = available + 1
         return available
+
     def find_ready_worker(self):
         """Return worker_pid of first available worker. If none available, return -1."""
         # keys (worker_pid) in registration order
@@ -325,9 +326,11 @@ class Master:
 
         input_dir = pathlib.Path(message_dict["input_directory"])
         if job_type == "map":
-            input_files = [str(file) for file in input_dir.iterdir() if file.is_file()] #files are paths
+            input_files = [str(file) for file in input_dir.iterdir()
+                           if file.is_file()]  # files are paths
         else:
-            input_files = [str(file.relative_to(self.home)) for file in input_dir.glob('reduce*') if file.is_file()]
+            input_files = [str(file.relative_to(self.home))
+                           for file in input_dir.glob('reduce*') if file.is_file()]
         sorted_files = sorted(input_files)
 
         tmp_output = "mapper-output" if job_type == "map" else "reducer-output"
@@ -344,7 +347,7 @@ class Master:
         while cur_work_idx < num_workers and not self.shutdown:
             ready_worker_id = -1
             while ready_worker_id == -1:
-                #time.sleep(1)
+                # time.sleep(1)
                 if not self.shutdown:
                     ready_worker_id = self.find_ready_worker()
                 else:
@@ -364,10 +367,10 @@ class Master:
             self.send_tcp_message(job_json, worker_port)
 
             cur_work_idx += 1
-        #modify input directory for next phase after all jobs for this phase is done
+        # modify input directory for next phase after all jobs for this phase is done
         message_dict['input_directory'] = str(output_dir)
         while self.busy_workers:
-            #time.sleep(1) ?
+            # time.sleep(1) ?
             if self.shutdown:
                 break
             continue
@@ -381,11 +384,12 @@ class Master:
         for path in pathlib.Path(input_dir).iterdir():
             num = str(path.stem)[6:]
             outputfile = "outputfile" + num
-            path.rename(output_dir / outputfile) # renaming moves the file to new location
+            # renaming moves the file to new location
+            path.rename(output_dir / outputfile)
 
     def fault_tolerance(self):
         while not self.shutdown:
-            
+
             if not self.dead_job_queue.empty():
                 print("fault running")
                 job_json = self.dead_job_queue.get()
@@ -394,7 +398,7 @@ class Master:
                 while ready_worker_id == -1:
                     if self.shutdown:
                         break
-                    #time.sleep(1)
+                    # time.sleep(1)
                     ready_worker_id = self.find_ready_worker()
                 self.worker_threads[ready_worker_id]['state'] = "busy"
                 temp_dict["worker_pid"] = ready_worker_id
@@ -415,7 +419,6 @@ class Master:
             "last_seen": time.time()
         }
 
-
     def send_register_ack(self, worker_message):
         """Send register ack message to worker."""
         reg_response_dict = {
@@ -426,9 +429,9 @@ class Master:
         }
 
         reg_json = json.dumps(reg_response_dict)
-        print("Master registering worker {}".format(worker_message["worker_port"]))
+        print("Master registering worker {}".format(
+            worker_message["worker_port"]))
         self.send_tcp_message(reg_json, reg_response_dict["worker_port"])
-
 
     def send_shutdown(self):
         """Send shutdown messages to all workers."""
@@ -440,7 +443,6 @@ class Master:
         for worker in self.worker_threads.values():
             if worker["state"] != "dead":
                 self.send_tcp_message(shutdown_json, worker['worker_port'])
-
 
     def send_tcp_message(self, message_json, worker_port):
         """Send a TCP message from the Master to a Worker."""
@@ -455,21 +457,22 @@ class Master:
             print("Failed to send a message to a worker at port " + str(worker_port))
             print(err)
 
-
     def heartbeat_listen(self, sock):
         """Listens for UDP heartbeat messages from workers."""
         sock.settimeout(1)
         while not self.shutdown:
             try:
-                data = sock.recv(4096) # data is a byte object
+                data = sock.recv(4096)  # data is a byte object
                 cur_time = time.time()
                 msg = json.loads(data.decode())
                 print("master receive hb from {}".format(msg['worker_pid']))
-                if msg['worker_pid'] in self.worker_threads: #ignore not registered worker heartbeat
+                # ignore not registered worker heartbeat
+                if msg['worker_pid'] in self.worker_threads:
                     for worker_pid, info in self.worker_threads.items():
                         if cur_time - info["last_seen"] >= 10.0:
                             if worker_pid in self.busy_workers:
-                                self.dead_job_queue.put(self.busy_workers[worker_pid])
+                                self.dead_job_queue.put(
+                                    self.busy_workers[worker_pid])
                                 self.busy_workers.pop(worker_pid)
                             self.worker_threads[worker_pid]["state"] = "dead"
                             print("killed{}".format(worker_pid))
@@ -481,6 +484,8 @@ class Master:
             except socket.timeout:
                 continue
         sock.close()
+
+
 @click.command()
 @click.argument("port", nargs=1, type=int)
 def main(port):
