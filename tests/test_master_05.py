@@ -7,10 +7,12 @@ import filecmp
 import mapreduce
 import utils
 from utils import TESTDATA_DIR
+import pdb
 
 
 def worker_message_generator(mock_socket):
     """Fake Worker messages."""
+    #pdb.set_trace()
     # Two workers register
     yield json.dumps({
         "message_type": "register",
