@@ -149,11 +149,11 @@ class Worker:
         lines = []
         for file in message_dict["input_files"]:
             open_file = open(file, 'r')
-            lines.append(open_file.readlines())
+            lines.extend(open_file.readlines())
             open_file.close()
         lines.sort()
         write_file = open(message_dict["output_file"], 'w')
-        for line in write_file:
+        for line in lines:
             write_file.write(line)
         write_file.close()
 
@@ -163,7 +163,7 @@ class Worker:
             "status": "finished",
             "worker_pid": self.worker_pid
         }
-        job_json = json.dumps(job_dict)
+        job_json = json.dumps(job_dict, indent=2)
         print(job_json)
 
         self.send_tcp_message(job_json)
@@ -200,9 +200,10 @@ class Worker:
 
         hb_msg = json.dumps(msg)
         worker_hbsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        worker_hbsock.connect(("localhost", self.master_port - 1))
         while not self.shutdown:
             print("Worker {} sending heartbeat".format(self.worker_pid))
-            worker_hbsock.sendto(hb_msg.encode('utf-8'), ("localhost", self.master_port - 1))
+            worker_hbsock.sendall(hb_msg.encode('utf-8'))
             time.sleep(2)
         worker_hbsock.close()
     def register(self):
