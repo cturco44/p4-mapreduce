@@ -28,17 +28,10 @@ class Master:
         self.port = port
 
         # make new directory tmp if doesn't exist
-<<<<<<< HEAD
-        self.cwd = pathlib.Path.cwd()
-        tmp = pathlib.Path.cwd() / "tmp"
-        tmp.mkdir(exist_ok=True)
-        self.tmp = tmp
-=======
         self.home = pathlib.Path.cwd()
         self.tmp = pathlib.Path.cwd() / "tmp"
         self.tmp.mkdir(exist_ok=True)
 
->>>>>>> buggy
 
         # delete any old job folders in tmp
         jobPaths = self.tmp.glob('job-*')
@@ -210,11 +203,7 @@ class Master:
         job_dir = self.tmp / "job-{}".format(str(job_id))
 
         input_dir = pathlib.Path(message_dict["input_directory"])
-<<<<<<< HEAD
-        input_files = [str(file.relative_to(self.cwd)) for file in input_dir.iterdir() if file.is_file()] #files are paths
-=======
         input_files = [str(file.relative_to(self.home)) for file in input_dir.iterdir() if file.is_file()] #files are paths
->>>>>>> buggy
         sorted_files = sorted(input_files)
 
         output_dir = job_dir / "grouper-output"
@@ -229,14 +218,6 @@ class Master:
             ready_worker_id = -1
             while ready_worker_id == -1:
                 #time.sleep(1)
-<<<<<<< HEAD
-                ready_worker_id = self.find_ready_worker()
-            #pdb.set_trace()
-            job_dict = {
-                "message_type": "new_sort_job",
-                "input_files": file_partitions[cur_work_idx],
-                "output_file": str(((output_dir / ("sorted" + self.format_no(output_file_number)))).relative_to(self.cwd)),
-=======
                 if not self.shutdown:
                     ready_worker_id = self.find_ready_worker()
                 else:
@@ -246,7 +227,6 @@ class Master:
                 "message_type": "new_sort_job",
                 "input_files": file_partitions[cur_work_idx],
                 "output_file": str(output_file.relative_to(self.home)),
->>>>>>> buggy
                 "worker_pid": ready_worker_id
             }
             output_file_number += 1
@@ -336,18 +316,10 @@ class Master:
         job_dir = self.tmp / "job-{}".format(str(job_id))
 
         input_dir = pathlib.Path(message_dict["input_directory"])
-<<<<<<< HEAD
-
-        if job_type == "reduce":
-            input_files = [str(file.relative_to(self.cwd)) for file in input_dir.iterdir() if file.is_file()] #files are paths
-        else:
-            input_files = [str(file) for file in input_dir.iterdir() if file.is_file()] #files are paths
-=======
         if job_type == "map":
             input_files = [str(file) for file in input_dir.iterdir() if file.is_file()] #files are paths
         else:
             input_files = [str(file.relative_to(self.home)) for file in input_dir.glob('reduce*') if file.is_file()]
->>>>>>> buggy
         sorted_files = sorted(input_files)
 
         tmp_output = "mapper-output" if job_type == "map" else "reducer-output"
@@ -365,24 +337,15 @@ class Master:
             ready_worker_id = -1
             while ready_worker_id == -1:
                 #time.sleep(1)
-<<<<<<< HEAD
-                ready_worker_id = self.find_ready_worker()
-                
-=======
                 if not self.shutdown:
                     ready_worker_id = self.find_ready_worker()
                 else:
                     break
->>>>>>> buggy
             job_dict = {
                 "message_type": "new_worker_job",
                 "input_files": file_partitions[cur_work_idx],
                 "executable": message_dict[executable_type],
-<<<<<<< HEAD
-                "output_directory": str(output_dir.relative_to(self.cwd)),
-=======
                 "output_directory": str(output_dir.relative_to(self.home)),
->>>>>>> buggy
                 "worker_pid": ready_worker_id
             }
             job_json = json.dumps(job_dict)
@@ -447,11 +410,7 @@ class Master:
         }
 
         reg_json = json.dumps(reg_response_dict)
-<<<<<<< HEAD
-
-=======
         print("Master registering worker {}".format(worker_message["worker_port"]))
->>>>>>> buggy
         self.send_tcp_message(reg_json, reg_response_dict["worker_port"])
 
 
