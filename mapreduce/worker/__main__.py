@@ -1,3 +1,4 @@
+"""Program."""
 import os
 import logging
 import json
@@ -18,7 +19,10 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 class Worker:
+    """Worker Class."""
+
     def __init__(self, master_port, worker_port):
+        """Docstring."""
         logging.info("Starting worker:%s", worker_port)
         logging.info("Worker:%s PWD %s", worker_port, os.getcwd())
 
@@ -105,6 +109,7 @@ class Worker:
                 continue
 
     def check_if_job(self):
+        """Check if job."""
         while not self.shutdown:
             if self.state == "ready" and self.job_type != "idle":
                 self.state = "busy"
@@ -113,7 +118,7 @@ class Worker:
                 work(msg_dict)
 
     def new_worker_job(self, message_dict):
-        """Handles mapping and reducing stage."""
+        """Handle mapping and reducing stage."""
         executable = message_dict["executable"]
         print(executable)
         mapper_output_dir = pathlib.Path(message_dict['output_directory'])
@@ -147,7 +152,7 @@ class Worker:
         self.job_type = "idle"
 
     def new_sort_job(self, message_dict):
-        """Handles grouping stage"""
+        """Handle grouping stage."""
         output_file = pathlib.Path(message_dict["output_file"])
         output_file.touch(exist_ok=True)
         lines = []
@@ -195,6 +200,7 @@ class Worker:
             print(err)
 
     def send_heartbeats(self):
+        """Send heartbeats."""
         msg = {
             "message_type": "heartbeat",
             "worker_pid": self.worker_pid
@@ -232,8 +238,10 @@ class Worker:
 @click.argument("master_port", nargs=1, type=int)
 @click.argument("worker_port", nargs=1, type=int)
 def main(master_port, worker_port):
+    """Run main."""
     Worker(master_port, worker_port)
 
 
 if __name__ == '__main__':
+    """Main function."""
     main()
