@@ -135,7 +135,7 @@ class Worker:
             "worker_pid": self.worker_pid
         }
 
-        job_json = json.dumps(job_dict, indent=2)
+        job_json = json.dumps(job_dict)
         print(job_json)
 
         self.send_tcp_message(job_json)
@@ -163,7 +163,7 @@ class Worker:
             "status": "finished",
             "worker_pid": self.worker_pid
         }
-        job_json = json.dumps(job_dict, indent=2)
+        job_json = json.dumps(job_dict)
         print(job_json)
 
         self.send_tcp_message(job_json)
@@ -198,7 +198,7 @@ class Worker:
             "worker_pid": self.worker_pid
         }
 
-        hb_msg = json.dumps(msg, indent=2)
+        hb_msg = json.dumps(msg)
         worker_hbsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         while not self.shutdown:
             print("Worker {} sending heartbeat".format(self.worker_pid))
@@ -214,7 +214,7 @@ class Worker:
             "worker_pid": self.worker_pid
         }
 
-        message_json = json.dumps(register_dict, indent=2)
+        message_json = json.dumps(register_dict)
         self.send_tcp_message(message_json)
 
         logging.debug(
