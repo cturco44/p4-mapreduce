@@ -14,10 +14,12 @@ from mapreduce.utils import listen_setup, tcp_socket
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
+
 def input_file_name(file_path):
-    """Return only name of input file, given entire input path."""
+    """input file name"""
     dirs = file_path.split("/")
     return dirs[-1]
+
 
 class Worker:
     """Worker class"""
@@ -35,7 +37,8 @@ class Worker:
         self.job_counter = 0
         self.heartbeat_thread = None
 
-        # Create new tcp socket on the worker_port and call listen(). only one listen().
+        # Create new tcp socket on the worker_port and call listen().
+        # only one listen().
         # ignore invalid messages including those that fail at json decoding
         self.shutdown = False
         self.sock = tcp_socket(self.worker_port)
@@ -73,7 +76,8 @@ class Worker:
             try:
                 message_dict = json.loads(message_str)
                 message_type = message_dict["message_type"]
-                print("Worker {} recv msg: ".format(self.worker_pid), message_dict)
+                print("Worker {} recv msg: ".format(self.worker_pid), 
+                      message_dict)
 
                 if message_type == "shutdown":
                     self.shutdown = True
@@ -129,7 +133,8 @@ class Worker:
             with open(file, "r") as input_file, open(output_dir, "w") as output_file:
                 subprocess.run(args=["chmod", "+x", executable])
                 # shell? TODO
-                subprocess.run(args=[executable], stdin=input_file, stdout=output_file)
+                subprocess.run(args=[executable], stdin=input_file,
+                               stdout=output_file)
 
         job_dict = {
             "message_type": "status",
