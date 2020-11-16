@@ -14,6 +14,7 @@ from mapreduce.utils import listen_setup, tcp_socket
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
+
 class Worker:
     """Worker Class."""
 
@@ -38,10 +39,12 @@ class Worker:
         # ignore invalid messages including those that fail at json decoding
         self.shutdown = False
         sock = tcp_socket(worker_port)
-        worker_thread = threading.Thread(target=self.listen, args=(sock, worker_port, worker_pid))
+        worker_thread = threading.Thread(target=self.listen,
+                                         args=(sock, worker_port, worker_pid))
         worker_thread.start()
 
-        check_job_thread = threading.Thread(target=self.check_if_job, args=(worker_pid,))
+        check_job_thread = threading.Thread(target=self.check_if_job,
+                                            args=(worker_pid,))
         check_job_thread.start()
 
         # if signals["shutdown"]:
@@ -104,7 +107,8 @@ class Worker:
             if self.state == "ready" and self.job_type != "idle":
                 self.state = "busy"
                 msg_dict = self.job_json
-                work = self.new_worker_job if self.job_type == "mapreduce" else self.new_sort_job
+                work = (self.new_worker_job
+                        if self.job_type == "mapreduce" else self.new_sort_job)
                 work(msg_dict, worker_pid)
 
     def new_worker_job(self, message_dict, worker_pid):
@@ -116,17 +120,18 @@ class Worker:
         output_files = []
 
         for file in message_dict["input_files"]:
-            #input_file = file.open()
             file = pathlib.Path(file)
             output_dir = mapper_output_dir / file.stem
             output_files.append(str(output_dir))
             output_file = open(output_dir, "w")
-            with open(file, 'r') as input_file, open(output_dir, "w") as output_file:
+            with open(file, 'r') as input_file, \
+                    open(output_dir, "w") as output_file:
                 # not sure if check = true or false
                 subprocess.run(args=["chmod", "+x", executable], check=True)
                 # shell? TODO
                 subprocess.run(args=[executable],
-                               stdin=input_file, stdout=output_file, check=True)
+                               stdin=input_file,
+                               stdout=output_file, check=True)
 
         job_dict = {
             "message_type": "status",
@@ -169,7 +174,6 @@ class Worker:
         self.send_tcp_message(job_json)
         self.state = "ready"
         self.job_type = "idle"
-
 
     def send_tcp_message(self, message_json):
         """Send a TCP message from the Worker to the Master."""

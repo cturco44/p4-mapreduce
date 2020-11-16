@@ -29,11 +29,10 @@ def listen_setup(sock):
         # print("Socket timeout")
         return ""
 
-
     message_chunks = []
     while True:
         try:
-            data = clientsocket.recv(4096) # maximum size??
+            data = clientsocket.recv(4096)  # maximum size??
         except socket.timeout:
             continue
         if not data:

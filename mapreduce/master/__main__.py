@@ -26,7 +26,7 @@ class Master:
         logging.info("Master:%s PWD %s", port, os.getcwd())
 
         # make new directory tmp if doesn't exist
-        #self.home = pathlib.Path.cwd()
+        # self.home = pathlib.Path.cwd()
         tmp = pathlib.Path.cwd() / "tmp"
         tmp.mkdir(exist_ok=True)
 
@@ -44,7 +44,7 @@ class Master:
         self.dead_job_queue = Queue()  # store job_json of dead workers
         self.server_running = False
 
-        # create a new thread which will listen for udp heartbeats from workers (port - 1)
+        # create new thread which will listen for heartbeats from workers
         # UDP socket for heartbeat
         heart_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         heart_sock.bind(("localhost", port - 1))
@@ -63,7 +63,8 @@ class Master:
         # Create a new TCP socket on the given port_number
 
         master_sock = tcp_socket(port)
-        master_thread = threading.Thread(target=self.listen, args=(master_sock,))
+        master_thread = threading.Thread(target=self.listen,
+                                         args=(master_sock,))
         master_thread.start()
         heartbeat_thread.join()
         print("a")
@@ -122,7 +123,8 @@ class Master:
     def new_master_job(self, message_dict):
         """Handle new_master_job message."""
         # create directories tmp/job-{id}. id is self.job_counter
-        job_path = pathlib.Path.cwd() / "tmp" / "job-{}".format(str(self.job_counter))
+        home_dir_tmp = pathlib.Path.cwd() / "tmp"
+        job_path = home_dir_tmp / "job-{}".format(str(self.job_counter))
         print("job_path: ", job_path)
         job_path.mkdir(parents=True)
         message_dict["job_id"] = self.job_counter
@@ -146,7 +148,6 @@ class Master:
         wrap_up(message_dict)
         self.server_running = False
 
-
     def check_queue(self):
         """Check queue."""
         while not self.shutdown:
@@ -162,7 +163,8 @@ class Master:
 
         file_partitions = [[] for _ in range(num_workers)]
 
-        job_dir = pathlib.Path.cwd() / "tmp" / "job-{}".format(str(message_dict["job_id"]))
+        home_dir_tmp = pathlib.Path.cwd() / "tmp"
+        job_dir = home_dir_tmp / "job-{}".format(str(message_dict["job_id"]))
 
         input_files = [
             str(file.relative_to(pathlib.Path.cwd()))
@@ -189,21 +191,24 @@ class Master:
                         print("sort worker found {} ".format(ready_worker_id))
                 else:
                     break
-            output_file = job_dir / "grouper-output" / ("sorted" + format_no(output_file_number))
+            output_file = job_dir / "grouper-output" / \
+                ("sorted" + format_no(output_file_number))
             job_dict = {
                 "message_type": "new_sort_job",
                 "input_files": file_partitions[cur_work_idx],
-                "output_file": str(output_file.relative_to(pathlib.Path.cwd())),
+                "output_file": str(output_file.
+                                   relative_to(pathlib.Path.cwd())),
                 "worker_pid": ready_worker_id,
             }
             output_file_number += 1
             self.worker_threads[ready_worker_id]["state"] = "busy"
             self.busy_workers[ready_worker_id] = json.dumps(job_dict)
             send_tcp_message(json.dumps(job_dict),
-                             self.worker_threads[ready_worker_id]["worker_port"])
+                             self.worker_threads[ready_worker_id]
+                             ["worker_port"])
 
             cur_work_idx += 1
-        # modify input directory for next phase after all jobs for this phase is done
+        # modify input dir for next phase after all jobs for this phase is done
         message_dict["input_directory"] = str(job_dir / "grouper-output")
         while self.busy_workers:
             # time.sleep(1) ?
@@ -214,7 +219,6 @@ class Master:
 
         group_helper(message_dict)
 
-
     def get_num_available_workers(self):
         """Get num available workers."""
         available = 0
@@ -224,7 +228,7 @@ class Master:
         return available
 
     def find_ready_worker(self):
-        """Return worker_pid of first available worker. If none available, return -1."""
+        """Return pid of first ready worker. If none, return -1."""
         # keys (worker_pid) in registration order
         ordered_pids = list(self.worker_threads)
 
@@ -233,7 +237,6 @@ class Master:
                 return pid
 
         return -1
-
 
     def mapreduce(self, message_dict, job_type):
         """Reduce and map execution."""
@@ -245,7 +248,8 @@ class Master:
         )
         file_partitions = [[] for _ in range(num_workers)]
 
-        job_dir = pathlib.Path.cwd() / "tmp" / "job-{}".format(str(message_dict["job_id"]))
+        job_dir = (pathlib.Path.cwd() / "tmp" /
+                   "job-{}".format(str(message_dict["job_id"])))
 
         input_files = mapreduce_helper(job_type, message_dict)
 
@@ -275,16 +279,18 @@ class Master:
                 "message_type": "new_worker_job",
                 "input_files": file_partitions[cur_work_idx],
                 "executable": message_dict[executable_type],
-                "output_directory": str((job_dir / tmp_output).relative_to(pathlib.Path.cwd())),
+                "output_directory": str((job_dir / tmp_output).
+                                        relative_to(pathlib.Path.cwd())),
                 "worker_pid": ready_worker_id,
             }
             self.worker_threads[ready_worker_id]["state"] = "busy"
             self.busy_workers[ready_worker_id] = json.dumps(job_dict)
             send_tcp_message(json.dumps(job_dict),
-                             self.worker_threads[ready_worker_id]["worker_port"])
+                             self.worker_threads[ready_worker_id]
+                             ["worker_port"])
 
             cur_work_idx += 1
-        # modify input directory for next phase after all jobs for this phase is done
+        # modify input dir for next phase after all jobs for this phase is done
         message_dict["input_directory"] = str(job_dir / tmp_output)
         while self.busy_workers:
             # time.sleep(1) ?
@@ -292,7 +298,6 @@ class Master:
                 break
             continue
         # if while loop ends, this means all work needed for this job is done
-
 
     def fault_tolerance(self):
         """Check fault tolerance."""
@@ -315,7 +320,8 @@ class Master:
                 print("sending dead job to {}".format(ready_worker_id))
                 print("\n")
                 print(job_json)
-                worker_port = self.worker_threads[ready_worker_id]["worker_port"]
+                worker_port = (self.worker_threads[ready_worker_id]
+                               ["worker_port"])
                 send_tcp_message(job_json, worker_port)
 
     def register_worker(self, worker_message):
@@ -327,7 +333,6 @@ class Master:
             "last_seen": time.time(),
         }
 
-
     def send_shutdown(self):
         """Send shutdown messages to all workers."""
         shutdown_dict = {"message_type": "shutdown"}
@@ -336,7 +341,6 @@ class Master:
         for worker in self.worker_threads.values():
             if worker["state"] != "dead":
                 send_tcp_message(shutdown_json, worker["worker_port"])
-
 
     def heartbeat_listen(self, sock):
         """Listen for UDP heartbeat messages from workers."""
@@ -355,7 +359,6 @@ class Master:
             except socket.timeout:
                 continue
         sock.close()
-
 
     def heartbeat_helper(self, cur_time, msg):
         """Is helper function for heartbeat_listen()."""
@@ -381,7 +384,8 @@ def send_tcp_message(message_json, worker_port):
         sock.sendall(message_json.encode("utf-8"))
         sock.close()
     except socket.error as err:
-        print("Failed to send a message to a worker at port " + str(worker_port))
+        print("Failed to send a message to a worker at port "
+              + str(worker_port))
         print(err)
 
 
@@ -434,8 +438,8 @@ def create_reducer_files(message_dict):
 
 def group_helper(message_dict):
     """Is helper function for group()."""
-    input_dir = pathlib.Path(message_dict["input_directory"])
-    starter_files = [str(file) for file in input_dir.iterdir() if file.is_file()]
+    in_dir = pathlib.Path(message_dict["input_directory"])
+    starter_files = [str(file) for file in in_dir.iterdir() if file.is_file()]
     file_list = []
     for grouper_file in starter_files:
         file_new = open(grouper_file, "r")
@@ -484,6 +488,7 @@ def mapreduce_helper(job_type, message_dict):
         ]
 
     return input_files
+
 
 @click.command()
 @click.argument("port", nargs=1, type=int)
