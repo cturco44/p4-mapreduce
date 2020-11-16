@@ -110,6 +110,8 @@ class Master:
                 continue
             except socket.timeout:
                 continue
+            finally:
+                time.sleep(0.1)
 
     def worker_status(self, message_dict):
         """Update state of worker."""
@@ -164,7 +166,7 @@ class Master:
                 if not self.server_running and self.find_ready_worker() != -1:
                     message_dict = self.job_queue.get()
                     self.execute_task(message_dict)
-            # time.sleep(1)
+            time.sleep(0.1)
 
     def group(self, message_dict):
         """Group files and then """
@@ -197,13 +199,13 @@ class Master:
             print("group running")
             ready_worker_id = -1
             while ready_worker_id == -1:
-                # time.sleep(1)
                 if not self.shutdown:
                     ready_worker_id = self.find_ready_worker()
                     if ready_worker_id != -1:
                         print("sort worker found {} ".format(ready_worker_id))
                 else:
                     break
+                time.sleep(0.1)
             output_file = output_dir / ("sorted" + self.format_no(output_file_number))
             job_dict = {
                 "message_type": "new_sort_job",
@@ -222,10 +224,10 @@ class Master:
         # modify input directory for next phase after all jobs for this phase is done
         message_dict["input_directory"] = str(output_dir)
         while self.busy_workers:
-            # time.sleep(1) ?
+
             if self.shutdown:
                 break
-            continue
+            time.sleep(0.1)
         print("sorting finished")
 
         input_dir = pathlib.Path(message_dict["input_directory"])
@@ -334,11 +336,11 @@ class Master:
         while cur_work_idx < num_workers and not self.shutdown:
             ready_worker_id = -1
             while ready_worker_id == -1:
-                # time.sleep(1)
                 if not self.shutdown:
                     ready_worker_id = self.find_ready_worker()
                 else:
                     break
+                time.sleep(0.1)
             print("sending message to worker {}".format(ready_worker_id))
             job_dict = {
                 "message_type": "new_worker_job",
@@ -357,10 +359,10 @@ class Master:
         # modify input directory for next phase after all jobs for this phase is done
         message_dict["input_directory"] = str(output_dir)
         while self.busy_workers:
-            # time.sleep(1) ?
+
             if self.shutdown:
                 break
-            continue
+            time.sleep(0.1)
         # if while loop ends, this means all work needed for this job is done
 
     def wrap_up(self, message_dict):
@@ -387,8 +389,9 @@ class Master:
                 while ready_worker_id == -1:
                     if self.shutdown:
                         break
-                    # time.sleep(1)
+
                     ready_worker_id = self.find_ready_worker()
+                    #time.sleep(0.1)
                 self.worker_threads[ready_worker_id]["state"] = "busy"
                 temp_dict["worker_pid"] = ready_worker_id
                 job_json = json.dumps(temp_dict)
@@ -398,6 +401,7 @@ class Master:
                 print(job_json)
                 worker_port = self.worker_threads[ready_worker_id]["worker_port"]
                 self.send_tcp_message(job_json, worker_port)
+            time.sleep(0.1)
 
     def register_worker(self, worker_message):
         """Add new worker to self.worker_threads dict."""
@@ -459,6 +463,7 @@ class Master:
                             if worker_pid in self.busy_workers:
                                 self.dead_job_queue.put(self.busy_workers[worker_pid])
                                 self.busy_workers.pop(worker_pid)
+                                print("popped{}".format(worker_pid))
                             self.worker_threads[worker_pid]["state"] = "dead"
                             print("killed{}".format(worker_pid))
                         if worker_pid == msg["worker_pid"]:

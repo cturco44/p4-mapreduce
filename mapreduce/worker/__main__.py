@@ -107,6 +107,8 @@ class Worker:
 
             except json.JSONDecodeError:
                 continue
+            finally:
+                time.sleep(0.1)
 
     def check_if_job(self):
         """Check if job."""
@@ -116,6 +118,7 @@ class Worker:
                 msg_dict = self.job_json
                 work = self.new_worker_job if self.job_type == "mapreduce" else self.new_sort_job
                 work(msg_dict)
+            time.sleep(0.1)
 
     def new_worker_job(self, message_dict):
         """Handle mapping and reducing stage."""
