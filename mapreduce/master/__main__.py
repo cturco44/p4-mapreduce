@@ -12,6 +12,7 @@ import sys
 import shutil
 from queue import Queue
 from mapreduce.utils import listen_setup, tcp_socket
+from heapq import merge
 
 
 # Configure logging
@@ -187,73 +188,94 @@ class Master:
             #time.sleep(1)
     def group(self, message_dict):
         """Group files and then """
-        # initialize list of num_mappers lists
-        num_mappers = message_dict['num_mappers']
-        file_partitions = [[] for i in range(num_mappers)]
+        # num_workers is number required in job, not total num of workers
+        num_workers = len(self.worker_threads)
+
+        file_partitions = [[] for _ in range(num_workers)]
 
         job_id = message_dict['job_id']
-        input_dir = pathlib.Path(message_dict["output_directory"])
-        input_files = [str(file) for file in input_dir.glob('*') if file.is_file()] #files are paths
+        job_dir = self.tmp / "job-{}".format(str(job_id))
+
+        input_dir = pathlib.Path(message_dict["input_directory"])
+        input_files = [str(file) for file in input_dir.iterdir() if file.is_file()] #files are paths
         sorted_files = sorted(input_files)
 
+        output_dir = job_dir / "grouper-output"
         # partition the files into num_mappers groups
         for index, file in enumerate(sorted_files):
-            partition_idx = index % num_mappers
+            partition_idx = index % num_workers
             file_partitions[partition_idx].append(file)
 
-        # initial groups. workers in registration order
-        ordered_pids = list(self.worker_threads)
-        curr_map_idx = 0
-
+        cur_work_idx = 0
         output_file_number = 1
-        output_dir = self.tmp / str(job_id) / "mapper-output"
-        for pid in ordered_pids:
-            self.worker_threads[pid]['state'] = "busy"
+        while cur_work_idx < num_workers:
+            ready_worker_id = -1
+            while ready_worker_id == -1:
+                #time.sleep(1)
+                ready_worker_id = self.find_ready_worker()
+               
             job_dict = {
                 "message_type": "new_sort_job",
-                "input_files": file_partitions[curr_map_idx],
+                "input_files": file_partitions[cur_work_idx],
                 "output_file": str(output_dir / ("sorted" + self.format_no(output_file_number))),
-                "worker_pid": pid
+                "worker_pid": ready_worker_id
             }
             output_file_number += 1
-            job_json = json.dumps(job_dict)
-            self.worker_threads[pid]['state'] = "busy"
-            self.busy_workers[pid] = job_json
-            worker_port = self.worker_threads[pid]['worker_port']
+            job_json = json.dumps(job_dict, indent=2)
+            self.worker_threads[ready_worker_id]['state'] = "busy"
+            self.busy_workers[ready_worker_id] = job_json
+            worker_port = self.worker_threads[ready_worker_id]['worker_port']
             self.send_tcp_message(job_json, worker_port)
 
-            curr_map_idx += 1
-
-            if curr_map_idx == num_mappers:
-                break
-
-        # if more num_mappers than workers
-        if num_mappers > len(ordered_pids):
-            while curr_map_idx < num_mappers:
-                ready_pid = self.find_ready_worker()
-                # look for ready workers
-                while ready_pid == -1:
-                    time.sleep(1)
-                    ready_pid = self.find_ready_worker()
-
-                job_dict = {
-                    "message_type": "new_sort_job",
-                    "input_files": file_partitions[curr_map_idx],
-                    "output_file": str(output_dir / ("sorted" + self.format_no(output_file_number))),
-                    "worker_pid": pid
-                }
-                output_file_number += 1
-                job_json = json.dumps(job_dict)
-                self.worker_threads[pid]['state'] = "busy"
-                self.busy_workers['ready_worker_id'] = job_json
-                worker_port = self.worker_threads[ready_pid]['worker_port']
-                self.send_tcp_message(job_json, worker_port)
-
-                curr_map_idx += 1
-
+            cur_work_idx += 1
+        #modify input directory for next phase after all jobs for this phase is done
+        message_dict['input_directory'] = str(output_dir)
         while self.busy_workers:
-            time.sleep(1)
-
+            #time.sleep(1) ?
+            continue
+        
+        
+        input_dir = pathlib.Path(message_dict["input_directory"])
+        starter_files = [str(file) for file in input_dir.iterdir() if file.is_file()]
+        file_list = []
+        for grouper_file in starter_files:
+            f = open(grouper_file, "r")
+            file_list.append(f)
+        it = merge(*file_list)
+        
+        #create new files
+        reducer_files = []
+        for i in range(message_dict['num_reducers']):
+            reducer_path = input_dir / ("reduce" + self.format_no(i + 1))
+            reducer_path.touch(exist_ok=True)
+            f = open(str(reducer_path), 'w')
+            reducer_files.append(f)
+        
+        num_reducers = message_dict['num_reducers']
+        key_num = 0
+        old_key = ""
+        num_loops = 0
+        while True: 
+            try: 
+                item = next(it)
+                split = item.split("\t")
+                key = split[0]
+                if(num_loops != 0) and (old_key != key):
+                    old_key = key
+                    key_num = key_num + 1
+                reducer_files[key_num % num_reducers].write(item)
+                num_loops = num_loops + 1
+                
+            except StopIteration: 
+                break
+        #close all files
+        for item in reducer_files:
+            item.close()
+        for item in file_list:
+            item.close()
+        #delete old files
+        for p in input_dir.glob("sorted*"):
+            p.unlink()
 
     def format_no(self, number):
         if number < 10:

@@ -144,7 +144,8 @@ class Worker:
 
     def new_sort_job(self, message_dict):
         """Handles grouping stage"""
-        message_dict["output_file"].touch(exist_ok=True)
+        output_file = pathlib.Path(message_dict["output_file"])
+        output_file.touch(exist_ok=True)
         lines = []
         for file in message_dict["input_files"]:
             open_file = open(file, 'r')
