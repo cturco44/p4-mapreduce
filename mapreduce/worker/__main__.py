@@ -1,22 +1,18 @@
 """Program."""
-import os
-import logging
 import json
-import time
-import click
-import mapreduce.utils
-import threading
 import socket
+import logging
+import threading
+import time
+import os
 import pathlib
 import subprocess
-import sys
+import click
 from mapreduce.utils import listen_setup, tcp_socket
 
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
-
-
 
 class Worker:
     """Worker Class."""
@@ -27,73 +23,67 @@ class Worker:
         logging.info("Worker:%s PWD %s", worker_port, os.getcwd())
 
         # Class variables
-        self.worker_pid = os.getpid()
-        self.worker_port = worker_port
+        # self.worker_pid = os.getpid()
+        worker_pid = os.getpid()
+        # self.worker_port = worker_port
         self.master_port = master_port
         self.state = "not_ready"
         self.job_type = "idle"
         self.job_json = None
-        self.job_counter = 0  # TODO: increment when done with current job
+        self.job_counter = 0  # increment when done with current job
         self.heartbeat_thread = None
 
         # Create new tcp socket on the worker_port and call listen().
         # only one listen().
         # ignore invalid messages including those that fail at json decoding
         self.shutdown = False
-        self.sock = tcp_socket(self.worker_port)
-        worker_thread = threading.Thread(target=self.listen)
+        sock = tcp_socket(worker_port)
+        worker_thread = threading.Thread(target=self.listen, args=(sock, worker_port, worker_pid))
         worker_thread.start()
 
-        check_job_thread = threading.Thread(target=self.check_if_job)
+        check_job_thread = threading.Thread(target=self.check_if_job, args=(worker_pid,))
         check_job_thread.start()
-        '''
-        # FOR TESTING
-        count = 0
-        while not signals["shutdown"]:
-            time.sleep(1)
-        '''
+
         # if signals["shutdown"]:
         check_job_thread.join()
         print("f")
         worker_thread.join()
         print("g")
-        self.sock.close()
+        sock.close()
         print("h")
         # for testing
-        print(self.worker_pid, " alive? ", worker_thread.is_alive())
+        print(worker_pid, " alive? ", worker_thread.is_alive())
         # print(len(threading.enumerate()))
         # print(threading.enumerate())
 
         # NOTE: the Master should ignore heartbeat messages from a worker
         # before that worker has successfully registered
 
-    def listen(self):
+    def listen(self, sock, worker_port, worker_pid):
         """Wait on a message from a socket or a shutdown signal."""
         # send the register message to Master
-        self.register()
-        self.sock.settimeout(1)
+        self.register(worker_port, worker_pid)
+        sock.settimeout(1)
         while not self.shutdown:
-            message_str = listen_setup(self.sock)
-
+            message_str = listen_setup(sock)
             if message_str == "":
                 continue
-
             try:
                 message_dict = json.loads(message_str)
                 message_type = message_dict["message_type"]
-                # TODO: for testing
+                # for testing
                 print("Worker {} recv msg: ".format(
-                    self.worker_pid), message_dict)
+                    worker_pid), message_dict)
 
                 if message_type == "shutdown":
                     self.shutdown = True
-                    if self.heartbeat_thread != None:
+                    if self.heartbeat_thread is not None:
                         self.heartbeat_thread.join()
                         print("e")
 
                 elif message_type == "register_ack":
                     self.heartbeat_thread = threading.Thread(
-                        target=self.send_heartbeats)
+                        target=self.send_heartbeats, args=(worker_pid,))
                     self.state = "ready"
                     self.heartbeat_thread.start()
 
@@ -108,16 +98,16 @@ class Worker:
             except json.JSONDecodeError:
                 continue
 
-    def check_if_job(self):
+    def check_if_job(self, worker_pid):
         """Check if job."""
         while not self.shutdown:
             if self.state == "ready" and self.job_type != "idle":
                 self.state = "busy"
                 msg_dict = self.job_json
                 work = self.new_worker_job if self.job_type == "mapreduce" else self.new_sort_job
-                work(msg_dict)
+                work(msg_dict, worker_pid)
 
-    def new_worker_job(self, message_dict):
+    def new_worker_job(self, message_dict, worker_pid):
         """Handle mapping and reducing stage."""
         executable = message_dict["executable"]
         print(executable)
@@ -132,16 +122,17 @@ class Worker:
             output_files.append(str(output_dir))
             output_file = open(output_dir, "w")
             with open(file, 'r') as input_file, open(output_dir, "w") as output_file:
-                subprocess.run(args=["chmod", "+x", executable])
+                # not sure if check = true or false
+                subprocess.run(args=["chmod", "+x", executable], check=True)
                 # shell? TODO
                 subprocess.run(args=[executable],
-                               stdin=input_file, stdout=output_file)
+                               stdin=input_file, stdout=output_file, check=True)
 
         job_dict = {
             "message_type": "status",
             "output_files": output_files,
             "status": "finished",
-            "worker_pid": self.worker_pid
+            "worker_pid": worker_pid
         }
 
         job_json = json.dumps(job_dict)
@@ -151,7 +142,7 @@ class Worker:
         self.state = "ready"
         self.job_type = "idle"
 
-    def new_sort_job(self, message_dict):
+    def new_sort_job(self, message_dict, worker_pid):
         """Handle grouping stage."""
         output_file = pathlib.Path(message_dict["output_file"])
         output_file.touch(exist_ok=True)
@@ -170,7 +161,7 @@ class Worker:
             "message_type": "status",
             "output_file": str(message_dict["output_file"]),
             "status": "finished",
-            "worker_pid": self.worker_pid
+            "worker_pid": worker_pid
         }
         job_json = json.dumps(job_dict, indent=2)
         print(job_json)
@@ -179,10 +170,6 @@ class Worker:
         self.state = "ready"
         self.job_type = "idle"
 
-    def input_file_name(self, file_path):
-        """Return only name of input file, given entire input path."""
-        dirs = file_path.split("/")
-        return dirs[-1]
 
     def send_tcp_message(self, message_json):
         """Send a TCP message from the Worker to the Master."""
@@ -199,29 +186,29 @@ class Worker:
             print("Failed to send message to Master.")
             print(err)
 
-    def send_heartbeats(self):
+    def send_heartbeats(self, worker_pid):
         """Send heartbeats."""
         msg = {
             "message_type": "heartbeat",
-            "worker_pid": self.worker_pid
+            "worker_pid": worker_pid
         }
 
         hb_msg = json.dumps(msg)
         worker_hbsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         worker_hbsock.connect(("localhost", self.master_port - 1))
         while not self.shutdown:
-            print("Worker {} sending heartbeat".format(self.worker_pid))
+            print("Worker {} sending heartbeat".format(worker_pid))
             worker_hbsock.sendall(hb_msg.encode('utf-8'))
             time.sleep(2)
         worker_hbsock.close()
 
-    def register(self):
+    def register(self, worker_port, worker_pid):
         """Send 'register' message from Worker to the Master."""
         register_dict = {
             "message_type": "register",
             "worker_host": "localhost",
-            "worker_port": self.worker_port,
-            "worker_pid": self.worker_pid
+            "worker_port": worker_port,
+            "worker_pid": worker_pid
         }
 
         message_json = json.dumps(register_dict)
@@ -229,9 +216,15 @@ class Worker:
 
         logging.debug(
             "Worker:%s received\n%s",
-            self.worker_port,
+            worker_port,
             json.dumps(register_dict),
         )
+
+
+def input_file_name(file_path):
+    """Return only name of input file, given entire input path."""
+    dirs = file_path.split("/")
+    return dirs[-1]
 
 
 @click.command()
@@ -243,5 +236,4 @@ def main(master_port, worker_port):
 
 
 if __name__ == '__main__':
-    """Main function."""
     main()
