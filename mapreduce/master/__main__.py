@@ -193,9 +193,10 @@ class Master:
                     self.execute_task(message_dict)
             #time.sleep(1)
     def group(self, message_dict):
+        print("group called")
         """Group files and then """
         # num_workers is number required in job, not total num of workers
-        num_workers = len(self.worker_threads)
+        num_workers = self.get_num_available_workers()
 
         file_partitions = [[] for _ in range(num_workers)]
 
@@ -215,11 +216,15 @@ class Master:
         cur_work_idx = 0
         output_file_number = 1
         while cur_work_idx < num_workers and not self.shutdown:
+            print("num_workers {}".format(num_workers))
+            print("group running")
             ready_worker_id = -1
             while ready_worker_id == -1:
                 #time.sleep(1)
                 if not self.shutdown:
                     ready_worker_id = self.find_ready_worker()
+                    if ready_worker_id != -1:
+                        print("sort worker found {} ".format(ready_worker_id))
                 else:
                     break
             output_file = output_dir / ("sorted" + self.format_no(output_file_number))
@@ -244,7 +249,7 @@ class Master:
             if self.shutdown:
                 break
             continue
-
+        print("sorting finished")
 
         input_dir = pathlib.Path(message_dict["input_directory"])
         starter_files = [str(file) for file in input_dir.iterdir() if file.is_file()]
@@ -293,8 +298,12 @@ class Master:
         if number < 10:
             return '0' + str(number)
         return str(number)
-
-
+    def get_num_available_workers(self):
+        available = 0
+        for key in self.worker_threads:
+            if self.worker_threads[key]["state"] == "ready":
+                available = available + 1
+        return available
     def find_ready_worker(self):
         """Return worker_pid of first available worker. If none available, return -1."""
         # keys (worker_pid) in registration order
@@ -309,7 +318,10 @@ class Master:
     def mapreduce(self, message_dict, job_type):
         # num_workers is number required in job, not total num of workers
         num_workers = message_dict['num_mappers'] if job_type == "map" else message_dict["num_reducers"]
-
+        num_available = self.get_num_available_workers()
+        if num_available < num_workers:
+            num_workers = num_available
+        print("num_workers={}".format(num_workers))
         file_partitions = [[] for _ in range(num_workers)]
 
         job_id = message_dict['job_id']
@@ -376,8 +388,9 @@ class Master:
 
     def fault_tolerance(self):
         while not self.shutdown:
-            #print("fault running")
+            
             if not self.dead_job_queue.empty():
+                print("fault running")
                 job_json = self.dead_job_queue.get()
                 ready_worker_id = -1
                 while ready_worker_id == -1:
@@ -451,9 +464,11 @@ class Master:
                 if msg['worker_pid'] in self.worker_threads: #ignore not registered worker heartbeat
                     for worker_pid, info in self.worker_threads.items():
                         if cur_time - info["last_seen"] >= 10.0:
+                            self.worker_threads[worker_pid]["state"] = "dead"
                             if worker_pid in self.busy_workers:
                                 self.dead_job_queue.put(self.busy_workers[worker_pid])
-                            self.worker_threads[worker_pid]["state"] = "dead"
+                                self.busy_workers.pop(worker_pid)
+                            print("killed{}".format(worker_pid))
                         if worker_pid == msg["worker_pid"]:
                             if self.worker_threads[worker_pid]["state"] != "dead":
                                 self.worker_threads[worker_pid]["last_seen"] = cur_time
