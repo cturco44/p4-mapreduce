@@ -318,10 +318,6 @@ class Master:
     def mapreduce(self, message_dict, job_type):
         # num_workers is number required in job, not total num of workers
         num_workers = message_dict['num_mappers'] if job_type == "map" else message_dict["num_reducers"]
-        num_available = self.get_num_available_workers()
-        if num_available < num_workers:
-            num_workers = num_available
-        print("num_workers={}".format(num_workers))
         file_partitions = [[] for _ in range(num_workers)]
 
         job_id = message_dict['job_id']
