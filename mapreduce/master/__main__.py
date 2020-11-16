@@ -442,7 +442,8 @@ class Master:
         shutdown_json = json.dumps(shutdown_dict)
 
         for worker in self.worker_threads.values():
-            self.send_tcp_message(shutdown_json, worker['worker_port'])
+            if worker["state"] != "dead":
+                self.send_tcp_message(shutdown_json, worker['worker_port'])
 
 
     def send_tcp_message(self, message_json, worker_port):
