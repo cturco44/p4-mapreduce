@@ -1,23 +1,22 @@
-import socket
-import json
-
-
 """Utils file.
 
 This file is to house code common between the Master and the Worker
 
 """
+import socket
+
+
 def tcp_socket(port):
-  """Initialize and bind a TCP socket for LISTENING."""
-  # create a new tcp socket
-  sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    """Initialize and bind a TCP socket for LISTENING."""
+    # create a new tcp socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-  # bind socket to server
-  sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-  sock.bind(("localhost", port))
-  sock.listen()
+    # bind socket to server
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("localhost", port))
+    sock.listen()
 
-  return sock
+    return sock
 
 
 def listen_setup(sock):
@@ -29,12 +28,12 @@ def listen_setup(sock):
     except socket.timeout:
         # print("Socket timeout")
         return ""
-    
+
 
     message_chunks = []
     while True:
         try:
-            data = clientsocket.recv(4096) # TODO: maximum size??
+            data = clientsocket.recv(4096) # maximum size??
         except socket.timeout:
             continue
         if not data:
@@ -47,4 +46,3 @@ def listen_setup(sock):
     message_str = message_bytes.decode('utf-8')
 
     return message_str
-
