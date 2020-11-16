@@ -353,6 +353,7 @@ class Master:
                     ready_worker_id = self.find_ready_worker()
                 else:
                     break
+            print("sending message to worker {}".format(ready_worker_id))
             job_dict = {
                 "message_type": "new_worker_job",
                 "input_files": file_partitions[cur_work_idx],
@@ -392,6 +393,7 @@ class Master:
             if not self.dead_job_queue.empty():
                 print("fault running")
                 job_json = self.dead_job_queue.get()
+                temp_dict = json.loads(job_json)
                 ready_worker_id = -1
                 while ready_worker_id == -1:
                     if self.shutdown:
@@ -399,7 +401,12 @@ class Master:
                     #time.sleep(1)
                     ready_worker_id = self.find_ready_worker()
                 self.worker_threads[ready_worker_id]['state'] = "busy"
+                temp_dict["worker_pid"] = ready_worker_id
+                job_json = json.dumps(temp_dict)
                 self.busy_workers[ready_worker_id] = job_json
+                print("sending dead job to {}".format(ready_worker_id))
+                print('\n')
+                print(job_json)
                 worker_port = self.worker_threads[ready_worker_id]['worker_port']
                 self.send_tcp_message(job_json, worker_port)
 
@@ -464,10 +471,10 @@ class Master:
                 if msg['worker_pid'] in self.worker_threads: #ignore not registered worker heartbeat
                     for worker_pid, info in self.worker_threads.items():
                         if cur_time - info["last_seen"] >= 10.0:
-                            self.worker_threads[worker_pid]["state"] = "dead"
                             if worker_pid in self.busy_workers:
                                 self.dead_job_queue.put(self.busy_workers[worker_pid])
                                 self.busy_workers.pop(worker_pid)
+                            self.worker_threads[worker_pid]["state"] = "dead"
                             print("killed{}".format(worker_pid))
                         if worker_pid == msg["worker_pid"]:
                             if self.worker_threads[worker_pid]["state"] != "dead":
