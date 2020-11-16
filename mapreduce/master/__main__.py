@@ -28,10 +28,17 @@ class Master:
         self.port = port
 
         # make new directory tmp if doesn't exist
+<<<<<<< HEAD
         self.cwd = pathlib.Path.cwd()
         tmp = pathlib.Path.cwd() / "tmp"
         tmp.mkdir(exist_ok=True)
         self.tmp = tmp
+=======
+        self.home = pathlib.Path.cwd()
+        self.tmp = pathlib.Path.cwd() / "tmp"
+        self.tmp.mkdir(exist_ok=True)
+
+>>>>>>> buggy
 
         # delete any old job folders in tmp
         jobPaths = self.tmp.glob('job-*')
@@ -116,8 +123,9 @@ class Master:
                 print("Master recv msg: ", json.dumps(message_dict))
 
                 if message_type == "shutdown":
-                    self.shutdown = True
                     self.send_shutdown() #got shutdown signal
+                    self.shutdown = True
+
 
 
                 elif message_type == "register":
@@ -132,6 +140,8 @@ class Master:
                     self.worker_status(message_dict)
 
             except json.JSONDecodeError:
+                continue
+            except socket.timeout:
                 continue
 
 
@@ -200,7 +210,11 @@ class Master:
         job_dir = self.tmp / "job-{}".format(str(job_id))
 
         input_dir = pathlib.Path(message_dict["input_directory"])
+<<<<<<< HEAD
         input_files = [str(file.relative_to(self.cwd)) for file in input_dir.iterdir() if file.is_file()] #files are paths
+=======
+        input_files = [str(file.relative_to(self.home)) for file in input_dir.iterdir() if file.is_file()] #files are paths
+>>>>>>> buggy
         sorted_files = sorted(input_files)
 
         output_dir = job_dir / "grouper-output"
@@ -211,16 +225,28 @@ class Master:
 
         cur_work_idx = 0
         output_file_number = 1
-        while cur_work_idx < num_workers:
+        while cur_work_idx < num_workers and not self.shutdown:
             ready_worker_id = -1
             while ready_worker_id == -1:
                 #time.sleep(1)
+<<<<<<< HEAD
                 ready_worker_id = self.find_ready_worker()
             #pdb.set_trace()
             job_dict = {
                 "message_type": "new_sort_job",
                 "input_files": file_partitions[cur_work_idx],
                 "output_file": str(((output_dir / ("sorted" + self.format_no(output_file_number)))).relative_to(self.cwd)),
+=======
+                if not self.shutdown:
+                    ready_worker_id = self.find_ready_worker()
+                else:
+                    break
+            output_file = output_dir / ("sorted" + self.format_no(output_file_number))
+            job_dict = {
+                "message_type": "new_sort_job",
+                "input_files": file_partitions[cur_work_idx],
+                "output_file": str(output_file.relative_to(self.home)),
+>>>>>>> buggy
                 "worker_pid": ready_worker_id
             }
             output_file_number += 1
@@ -235,9 +261,11 @@ class Master:
         message_dict['input_directory'] = str(output_dir)
         while self.busy_workers:
             #time.sleep(1) ?
+            if self.shutdown:
+                break
             continue
-        
-        
+
+
         input_dir = pathlib.Path(message_dict["input_directory"])
         starter_files = [str(file) for file in input_dir.iterdir() if file.is_file()]
         file_list = []
@@ -245,7 +273,7 @@ class Master:
             f = open(grouper_file, "r")
             file_list.append(f)
         it = merge(*file_list)
-        
+
         #create new files
         reducer_files = []
         for i in range(message_dict['num_reducers']):
@@ -253,13 +281,13 @@ class Master:
             reducer_path.touch(exist_ok=True)
             f = open(str(reducer_path), 'w')
             reducer_files.append(f)
-        
+
         num_reducers = message_dict['num_reducers']
         key_num = 0
         old_key = ""
         num_loops = 0
-        while True: 
-            try: 
+        while True:
+            try:
                 item = next(it)
                 split = item.split("\t")
                 key = split[0]
@@ -268,8 +296,8 @@ class Master:
                     key_num = key_num + 1
                 reducer_files[key_num % num_reducers].write(item)
                 num_loops = num_loops + 1
-                
-            except StopIteration: 
+
+            except StopIteration:
                 break
         #close all files
         for item in reducer_files:
@@ -277,9 +305,10 @@ class Master:
         for item in file_list:
             item.close()
         #delete old files
+        '''
         for p in input_dir.glob("sorted*"):
             p.unlink()
-
+        '''
     def format_no(self, number):
         if number < 10:
             return '0' + str(number)
@@ -307,11 +336,18 @@ class Master:
         job_dir = self.tmp / "job-{}".format(str(job_id))
 
         input_dir = pathlib.Path(message_dict["input_directory"])
+<<<<<<< HEAD
 
         if job_type == "reduce":
             input_files = [str(file.relative_to(self.cwd)) for file in input_dir.iterdir() if file.is_file()] #files are paths
         else:
             input_files = [str(file) for file in input_dir.iterdir() if file.is_file()] #files are paths
+=======
+        if job_type == "map":
+            input_files = [str(file) for file in input_dir.iterdir() if file.is_file()] #files are paths
+        else:
+            input_files = [str(file.relative_to(self.home)) for file in input_dir.glob('reduce*') if file.is_file()]
+>>>>>>> buggy
         sorted_files = sorted(input_files)
 
         tmp_output = "mapper-output" if job_type == "map" else "reducer-output"
@@ -325,17 +361,28 @@ class Master:
 
         executable_type = "mapper_executable" if job_type == "map" else "reducer_executable"
 
-        while cur_work_idx < num_workers:
+        while cur_work_idx < num_workers and not self.shutdown:
             ready_worker_id = -1
             while ready_worker_id == -1:
                 #time.sleep(1)
+<<<<<<< HEAD
                 ready_worker_id = self.find_ready_worker()
                 
+=======
+                if not self.shutdown:
+                    ready_worker_id = self.find_ready_worker()
+                else:
+                    break
+>>>>>>> buggy
             job_dict = {
                 "message_type": "new_worker_job",
                 "input_files": file_partitions[cur_work_idx],
                 "executable": message_dict[executable_type],
+<<<<<<< HEAD
                 "output_directory": str(output_dir.relative_to(self.cwd)),
+=======
+                "output_directory": str(output_dir.relative_to(self.home)),
+>>>>>>> buggy
                 "worker_pid": ready_worker_id
             }
             job_json = json.dumps(job_dict)
@@ -349,6 +396,8 @@ class Master:
         message_dict['input_directory'] = str(output_dir)
         while self.busy_workers:
             #time.sleep(1) ?
+            if self.shutdown:
+                break
             continue
         # if while loop ends, this means all work needed for this job is done
 
@@ -398,7 +447,11 @@ class Master:
         }
 
         reg_json = json.dumps(reg_response_dict)
+<<<<<<< HEAD
 
+=======
+        print("Master registering worker {}".format(worker_message["worker_port"]))
+>>>>>>> buggy
         self.send_tcp_message(reg_json, reg_response_dict["worker_port"])
 
 
@@ -430,7 +483,6 @@ class Master:
     def heartbeat_listen(self, sock):
         """Listens for UDP heartbeat messages from workers."""
         sock.settimeout(1)
-
         while not self.shutdown:
             try:
                 data = sock.recv(4096) # data is a byte object
@@ -450,7 +502,6 @@ class Master:
             except socket.timeout:
                 continue
         sock.close()
-
 @click.command()
 @click.argument("port", nargs=1, type=int)
 def main(port):

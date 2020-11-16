@@ -125,7 +125,7 @@ def test_master_00_shutdown_workers(mocker):
     # the correct arguments.
     #
     # NOTE: to see a list of all calls
-    # >>> print(mock_socket.mock_calls)
+    #print(mock_socket.mock_calls)
     mock_socket.assert_has_calls([
         # TCP socket server configuration.  This is the socket the master uses
         # to receive status update JSON messages from the master.
