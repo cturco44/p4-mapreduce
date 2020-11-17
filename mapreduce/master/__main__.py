@@ -155,7 +155,7 @@ class Master:
                 if not self.server_running and self.find_ready_worker() != -1:
                     message_dict = self.job_queue.get()
                     self.execute_task(message_dict)
-            # time.sleep(1)
+            time.sleep(0.1)
 
     def group(self, message_dict):
         """Group files and make directories."""
@@ -189,6 +189,7 @@ class Master:
                     ready_worker_id = self.find_ready_worker()
                     if ready_worker_id != -1:
                         print("sort worker found {} ".format(ready_worker_id))
+                    time.sleep(0.1)
                 else:
                     break
             output_file = job_dir / "grouper-output" / \
@@ -214,7 +215,7 @@ class Master:
             # time.sleep(1) ?
             if self.shutdown:
                 break
-            continue
+            time.sleep(0.1)
         print("sorting finished")
 
         group_helper(message_dict)
@@ -272,6 +273,7 @@ class Master:
                 # time.sleep(1)
                 if not self.shutdown:
                     ready_worker_id = self.find_ready_worker()
+                    time.sleep(0.1)
                 else:
                     break
             print("sending message to worker {}".format(ready_worker_id))
@@ -296,7 +298,7 @@ class Master:
             # time.sleep(1) ?
             if self.shutdown:
                 break
-            continue
+            time.sleep(0.1)
         # if while loop ends, this means all work needed for this job is done
 
     def fault_tolerance(self):
@@ -311,7 +313,6 @@ class Master:
                 while ready_worker_id == -1:
                     if self.shutdown:
                         break
-                    # time.sleep(1)
                     ready_worker_id = self.find_ready_worker()
                 self.worker_threads[ready_worker_id]["state"] = "busy"
                 temp_dict["worker_pid"] = ready_worker_id
@@ -323,6 +324,7 @@ class Master:
                 worker_port = (self.worker_threads[ready_worker_id]
                                ["worker_port"])
                 send_tcp_message(job_json, worker_port)
+            time.sleep(0.1)
 
     def register_worker(self, worker_message):
         """Add new worker to self.worker_threads dict."""

@@ -110,6 +110,7 @@ class Worker:
                 work = (self.new_worker_job
                         if self.job_type == "mapreduce" else self.new_sort_job)
                 work(msg_dict, worker_pid)
+            time.sleep(0.1)
 
     def new_worker_job(self, message_dict, worker_pid):
         """Handle mapping and reducing stage."""
